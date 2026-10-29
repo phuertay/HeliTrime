@@ -79,6 +79,7 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     override fun onKeyDown(keyCode: Int, keyEvent: KeyEvent): Boolean {
         emojiAltPhysicalKeyDetector.onKeyDown(keyEvent)
+        if (latinIME.onPinyinHardwareKey(keyEvent)) return true
         if (!settings.current.mEnableHardwareKeyboard)
             return false
 
@@ -208,7 +209,9 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         else -> false
     }
 
-    override fun onVerticalSpaceSwipe(steps: Int): Boolean = when (Settings.getValues().mSpaceSwipeVertical) {
+    override fun onVerticalSpaceSwipe(steps: Int): Boolean {
+        if (latinIME.onPinyinVerticalSpaceSwipe(steps)) return true
+        return when (Settings.getValues().mSpaceSwipeVertical) {
         KeyboardActionListener.SwipeAction.MOVE_CURSOR -> onMoveCursorVertically(steps)
         KeyboardActionListener.SwipeAction.SWITCH_LANGUAGE -> onLanguageSlide(steps)
         KeyboardActionListener.SwipeAction.TOGGLE_NUMPAD -> {
@@ -237,9 +240,11 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             }
         }
         else -> false
+        }
     }
 
     override fun onEndSpaceSwipe() {
+        latinIME.onPinyinEndSpaceSwipe()
         initialSubtype = null
         subtypeSwitchCount = 0
     }

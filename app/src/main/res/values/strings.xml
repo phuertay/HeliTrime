@@ -440,6 +440,9 @@
     <!-- Description for English (US) keyboard subtype
          (US) should be an abbreviation of United States. -->
     <string name="subtype_en_US">English (US)</string>
+    <string name="subtype_zh_CN">Chinese (Simplified)</string>
+    <string name="pinyin_preparing">Preparing pinyin</string>
+    <string name="pinyin_load_failed">Pinyin dictionary failed to load</string>
     <!-- Description for Spanish (US) keyboard subtype
          (US) should be an abbreviation of United States. -->
     <string name="subtype_es_US">Spanish (US)</string>

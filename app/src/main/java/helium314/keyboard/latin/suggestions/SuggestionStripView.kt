@@ -24,6 +24,7 @@ import android.view.View.OnLongClickListener
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityEvent
 import android.widget.ImageButton
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.TextView
@@ -243,6 +244,10 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     fun setSuggestions(suggestions: SuggestedWords, isRtlLanguage: Boolean) {
         clear()
+        if (suggestions.size() > 0 && suggestions.getInfo(0).kind == SuggestedWordInfo.KIND_RIME) {
+            showRimeMenu(suggestions)
+            return
+        }
         setRtl(isRtlLanguage)
         suggestedWords = suggestions
         startIndexOfMoreSuggestions = layoutHelper.layoutAndReturnStartIndexOfMoreSuggestions(
@@ -276,6 +281,27 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         }
 
         if (Settings.getValues().mAutoHideToolbar) setToolbarVisibility(false)
+    }
+
+    private fun showRimeMenu(suggestions: SuggestedWords) {
+        setToolbarVisibility(false)
+        val scroller = HorizontalScrollView(context)
+        scroller.isHorizontalScrollBarEnabled = false
+        val row = LinearLayout(context)
+        row.orientation = LinearLayout.HORIZONTAL
+        for (index in 0 until suggestions.size()) {
+            val info = suggestions.getInfo(index)
+            val label = TextView(context)
+            val comment = info.mPrevWordsContext
+            label.text = if (comment.isNullOrEmpty()) info.mWord else info.mWord + "\n" + comment
+            label.tag = index
+            label.setPadding(24, 8, 24, 8)
+            label.setOnClickListener(this)
+            row.addView(label)
+        }
+        scroller.addView(row)
+        suggestionsStrip.addView(scroller)
+        suggestedWords = suggestions
     }
 
     fun setMoreSuggestionsHeight(remainingHeight: Int) {

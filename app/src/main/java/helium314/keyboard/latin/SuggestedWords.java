@@ -35,6 +35,7 @@ public class SuggestedWords {
     public static final int INPUT_STYLE_RECORRECTION = 5;
     public static final int INPUT_STYLE_PREDICTION = 6;
     public static final int INPUT_STYLE_BEGINNING_OF_SENTENCE_PREDICTION = 7;
+    public static final int INPUT_STYLE_RIME = 8;
 
     // The maximum number of suggestions available.
     public static final int MAX_SUGGESTIONS = 18;
@@ -99,7 +100,7 @@ public class SuggestedWords {
      * @return the count of suggested word to show as suggestions to UI.
      */
     public int getWordCountToShow() {
-        if (isPrediction()) {
+        if (isPrediction() || mInputStyle == INPUT_STYLE_RIME) {
             return size();
         }
         return size() - /* typed word */ 1;
@@ -255,6 +256,7 @@ public class SuggestedWords {
         // in java for re-correction)
         public static final int KIND_RESUMED = 9;
         public static final int KIND_OOV_CORRECTION = 10; // Most probable string correction
+        public static final int KIND_RIME = 11; // librime candidate; mIndexOfTouchPointOfSecondWord holds the index
 
         public static final int KIND_FLAG_POSSIBLY_OFFENSIVE = 0x80000000;
         public static final int KIND_FLAG_EXACT_MATCH = 0x40000000;

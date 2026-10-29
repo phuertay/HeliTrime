@@ -7,6 +7,8 @@ local.properties
 Gemfile
 build
 app/build
+!app/src/main/assets/rime/build/
+!app/src/main/assets/rime/build/**
 app/release
 app/.cxx
 app/.attach_*

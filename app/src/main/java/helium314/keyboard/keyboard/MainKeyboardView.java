@@ -84,6 +84,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     private final float mLanguageOnSpacebarTextRatio;
     private float mLanguageOnSpacebarTextSize;
     private final int mLanguageOnSpacebarTextColor;
+    private String mPinyinSpaceLabel = "";
     private final float mLanguageOnSpacebarTextShadowRadius;
     private final int mLanguageOnSpacebarTextShadowColor;
     private static final float LANGUAGE_ON_SPACEBAR_TEXT_SHADOW_RADIUS_DISABLED = -1.0f;
@@ -673,6 +674,11 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     }
 
     // the whole language on spacebar thing could probably be simplified quite a bit
+    public void setPinyinSpaceLabel(final String label) {
+        mPinyinSpaceLabel = label == null ? "" : label;
+        invalidateAllKeys();
+    }
+
     public void startDisplayLanguageOnSpacebar(final boolean subtypeChanged,
             final int languageOnSpacebarFormatType,
             final boolean hasMultipleEnabledIMEsOrSubtypes) {
@@ -814,7 +820,9 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         paint.setTextSize(mLanguageOnSpacebarTextSize);
         final String customText = Settings.getValues().mSpaceBarText;
         final String spaceText;
-        if (!customText.isEmpty()) {
+        if (mPinyinSpaceLabel != null && !mPinyinSpaceLabel.isEmpty()) {
+            spaceText = mPinyinSpaceLabel;
+        } else if (!customText.isEmpty()) {
             spaceText = customText;
         } else if (DebugFlags.DEBUG_ENABLED) {
             final String l = KeyboardSwitcher.getInstance().getLocaleAndConfidenceInfo();

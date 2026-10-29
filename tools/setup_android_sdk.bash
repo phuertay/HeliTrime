@@ -65,6 +65,9 @@ EOF
 sudo ln -sfn "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" /usr/local/bin/sdkmanager
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "${repo_root}/.gitmodules" ]]; then
+  git -C "${repo_root}" submodule update --init --recursive rime/third_party/librime
+fi
 if [[ -f "${repo_root}/settings.gradle" ]]; then
   cat > "${repo_root}/local.properties" <<EOF
 sdk.dir=${ANDROID_HOME}

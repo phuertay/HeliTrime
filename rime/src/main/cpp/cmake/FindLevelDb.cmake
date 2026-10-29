@@ -1,0 +1,3 @@
+set(LevelDb_FOUND TRUE)
+set(LevelDb_LIBRARY leveldb)
+get_target_property(LevelDb_INCLUDE_PATH leveldb INTERFACE_INCLUDE_DIRECTORIES)

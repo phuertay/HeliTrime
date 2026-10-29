@@ -2,6 +2,11 @@
 -keepclassmembers class * {
     native <methods>;
 }
+-keep class helium314.keyboard.latin.pinyin.RimeNative { *; }
+
+# AndroidX test references these annotations. They are not on the device.
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.lang.model.**
 
 # Keep classes that are used as a parameter type of methods that are also marked as keep
 # to preserve changing those methods' signature.

@@ -20,6 +20,7 @@ android {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -34,6 +35,7 @@ android {
             isShrinkResources = false
             isDebuggable = false
             isJniDebuggable = false
+            matchingFallbacks += listOf("release")
         }
         debug {
             // "normal" debug has minify for smaller APK to fit the GitHub 25 MB limit when zipped
@@ -45,6 +47,7 @@ android {
         create("runTests") { // build variant for running tests on CI that skips tests known to fail
             isMinifyEnabled = false
             isJniDebuggable = false
+            matchingFallbacks += listOf("debug")
         }
         create("debugNoMinify") { // for faster builds in IDE
             isDebuggable = true
@@ -52,10 +55,12 @@ android {
             isJniDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".debug"
+            matchingFallbacks += listOf("debug")
             //isDefault = true // would be nice as default, but breaks unit test handling in Android Studio
         }
 
         androidComponents.onVariants { variant: ApplicationVariant ->
+            variant.androidTest?.proguardFiles?.add(project.layout.buildDirectory.file(project.buildFile.parent + "/src/androidTest/proguard-rules.pro"))
             if (variant.buildType == "debug") {
                 // got a little too big for GitHub after some dependency upgrades, so we remove the largest dictionary
                 variant.androidResources.ignoreAssetsPatterns = listOf("main_ro.dict")
@@ -116,6 +121,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":rime"))
+
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
     implementation("androidx.recyclerview:recyclerview:1.4.0")
@@ -144,4 +151,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test:runner:1.7.0")
     testImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:core:1.7.0")
 }

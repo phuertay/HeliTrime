@@ -1,0 +1,3 @@
+set(Opencc_FOUND TRUE)
+set(Opencc_LIBRARY libopencc)
+get_target_property(Opencc_INCLUDE_PATH libopencc INTERFACE_INCLUDE_DIRECTORIES)
