@@ -82,6 +82,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         fun removeSuggestion(word: String?)
         fun removeExternalSuggestions()
         fun onSwipeDownOnToolbar()
+        fun onRimePage(delta: Int) {}
     }
 
     private val moreSuggestionsContainer: View
@@ -125,6 +126,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     private val defaultToolbarBackground: Drawable = toolbarExpandKey.background
     private val enabledToolKeyBackground = GradientDrawable()
     private var direction = 1 // 1 if LTR, -1 if RTL
+    private var rimePageNo = 0
+    private var rimeLastPage = true
 
     private val toolbarKeyLayoutParams = LinearLayout.LayoutParams(
         resources.getDimensionPixelSize(R.dimen.config_suggestions_strip_edge_key_width),
@@ -283,25 +286,65 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         if (Settings.getValues().mAutoHideToolbar) setToolbarVisibility(false)
     }
 
+    fun setRimePage(pageNo: Int, isLastPage: Boolean) {
+        rimePageNo = pageNo
+        rimeLastPage = isLastPage
+    }
+
+    fun showRimeStatus(text: String) {
+        clear()
+        setToolbarVisibility(false)
+        val label = TextView(context)
+        val colors = Settings.getValues().mColors
+        label.text = text
+        label.setTextColor(colors.get(ColorType.SUGGESTED_WORD))
+        label.setPadding(24, 12, 24, 12)
+        suggestionsStrip.addView(label)
+    }
+
     private fun showRimeMenu(suggestions: SuggestedWords) {
         setToolbarVisibility(false)
+        val colors = Settings.getValues().mColors
         val scroller = HorizontalScrollView(context)
         scroller.isHorizontalScrollBarEnabled = false
         val row = LinearLayout(context)
         row.orientation = LinearLayout.HORIZONTAL
+        if (rimePageNo > 0) row.addView(rimePageButton(RIME_PAGE_PREV, "‹", colors))
         for (index in 0 until suggestions.size()) {
             val info = suggestions.getInfo(index)
-            val label = TextView(context)
+            val cell = LinearLayout(context)
+            cell.orientation = LinearLayout.VERTICAL
+            cell.tag = index
+            cell.setPadding(24, 4, 24, 4)
+            cell.setOnClickListener(this)
+            val hanzi = TextView(context)
+            hanzi.text = info.mWord
+            hanzi.setTextColor(colors.get(ColorType.SUGGESTED_WORD))
+            cell.addView(hanzi)
             val comment = info.mPrevWordsContext
-            label.text = if (comment.isNullOrEmpty()) info.mWord else info.mWord + "\n" + comment
-            label.tag = index
-            label.setPadding(24, 8, 24, 8)
-            label.setOnClickListener(this)
-            row.addView(label)
+            if (!comment.isNullOrEmpty()) {
+                val secondary = TextView(context)
+                secondary.text = comment
+                secondary.setTextColor(colors.get(ColorType.MORE_SUGGESTIONS_HINT))
+                secondary.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                cell.addView(secondary)
+            }
+            row.addView(cell)
         }
+        if (!rimeLastPage && suggestions.size() > 0) row.addView(rimePageButton(RIME_PAGE_NEXT, "›", colors))
         scroller.addView(row)
         suggestionsStrip.addView(scroller)
         suggestedWords = suggestions
+    }
+
+    private fun rimePageButton(tag: String, label: String, colors: Colors): TextView {
+        val button = TextView(context)
+        button.text = label
+        button.tag = tag
+        button.setTextColor(colors.get(ColorType.SUGGESTED_WORD))
+        button.setPadding(28, 8, 28, 8)
+        button.setOnClickListener(this)
+        return button
     }
 
     fun setMoreSuggestionsHeight(remainingHeight: Int) {
@@ -356,6 +399,14 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     override fun onClick(view: View) {
         val tag = view.tag
+        if (tag == RIME_PAGE_PREV) {
+            listener.onRimePage(-1)
+            return
+        }
+        if (tag == RIME_PAGE_NEXT) {
+            listener.onRimePage(1)
+            return
+        }
         if (tag is ToolbarKey) {
             onClickToolbarKey(view) { listener.onCodeInput(it, Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE, false) }
             return
@@ -582,6 +633,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         @JvmField
         var DEBUG_SUGGESTIONS = false
         private const val DEBUG_INFO_TEXT_SIZE_IN_DIP = 6.5f
+        private const val RIME_PAGE_PREV = "rime-page-prev"
+        private const val RIME_PAGE_NEXT = "rime-page-next"
         private val TAG = SuggestionStripView::class.java.simpleName
     }
 }

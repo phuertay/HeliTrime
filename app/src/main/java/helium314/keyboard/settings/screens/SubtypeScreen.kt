@@ -150,6 +150,13 @@ fun SubtypeScreen(
                     .then(Modifier.padding(innerPadding)),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (currentSubtype.hasExtraValueOf(ExtraValue.RIME_SCHEMA)) {
+                    Text(
+                        stringResource(R.string.subtype_zh_CN_summary),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 MainLayoutRow(currentSubtype, customMainLayouts) { setCurrentSubtype(it) }
                 if (availableLocalesForScript.size > 1) {
                     WithSmallTitle(stringResource(R.string.secondary_locale)) {

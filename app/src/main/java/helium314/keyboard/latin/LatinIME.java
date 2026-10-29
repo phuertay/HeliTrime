@@ -44,6 +44,7 @@ import helium314.keyboard.latin.common.InsetsOutlineProvider;
 import helium314.keyboard.event.Event;
 import helium314.keyboard.event.InputTransaction;
 import helium314.keyboard.keyboard.Keyboard;
+import helium314.keyboard.keyboard.KeyboardElement;
 import helium314.keyboard.keyboard.KeyboardId;
 import helium314.keyboard.keyboard.KeyboardLayoutSet;
 import helium314.keyboard.keyboard.KeyboardSwitcher;
@@ -58,6 +59,7 @@ import helium314.keyboard.latin.define.DebugFlags;
 import helium314.keyboard.latin.dictionary.history.UserHistoryDictUtils;
 import helium314.keyboard.latin.inputlogic.InputLogic;
 import helium314.keyboard.latin.pinyin.PinyinEditor;
+import helium314.keyboard.latin.pinyin.PinyinFields;
 import helium314.keyboard.latin.pinyin.PinyinInputController;
 import helium314.keyboard.latin.pinyin.RimeSession;
 import helium314.keyboard.latin.settings.Settings;
@@ -123,6 +125,7 @@ public class LatinIME extends InputMethodService implements
     private final DictionaryFacilitator mOriginalDictionaryFacilitator = mDictionaryFacilitator;
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
     private PinyinInputController mPinyinController;
+    private boolean mApplyingPinyinMenu;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -1000,9 +1003,10 @@ public class LatinIME extends InputMethodService implements
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
         final SettingsValues settingsValues = mSettings.getCurrent();
-        if (mPinyinController != null) {
+        if (mPinyinController != null && mPinyinController.isActive() && !mPinyinController.isFailed()) {
             mPinyinController.onCursorMoved(mInputLogic.mConnection.isBelatedExpectedUpdate(
                     oldSelStart, newSelStart, oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd));
+            return;
         }
         if (isInputViewShown()
                 && mInputLogic.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
@@ -1352,7 +1356,7 @@ public class LatinIME extends InputMethodService implements
             mRichImm.switchToShortcutIme(this);
         }
         if (mPinyinController != null && mPinyinController.onEventCode(event.getCodePoint(),
-                (event.getMetaState() & android.view.KeyEvent.META_SHIFT_ON) != 0)) {
+                (event.getMetaState() & android.view.KeyEvent.META_SHIFT_ON) != 0, isPinyinSymbolsLayer())) {
             showPinyinSuggestions();
             return;
         }
@@ -1378,23 +1382,33 @@ public class LatinIME extends InputMethodService implements
     }
 
     public void onStartBatchInput() {
-        if (mPinyinController != null) mPinyinController.onGlide();
+        if (pinyinIgnoresGlide()) {
+            mPinyinController.onGlide();
+            return;
+        }
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }
 
     public void onUpdateBatchInput(final InputPointers batchPointers) {
+        if (pinyinIgnoresGlide()) return;
         mInputLogic.onUpdateBatchInput(batchPointers);
     }
 
     public void onEndBatchInput(final InputPointers batchPointers) {
+        if (pinyinIgnoresGlide()) return;
         mInputLogic.onEndBatchInput(batchPointers);
         mGestureConsumer.onGestureCompleted(batchPointers);
     }
 
     public void onCancelBatchInput() {
+        if (pinyinIgnoresGlide()) return;
         mInputLogic.onCancelBatchInput(mHandler);
         mGestureConsumer.onGestureCanceled();
+    }
+
+    private boolean pinyinIgnoresGlide() {
+        return mPinyinController != null && mPinyinController.isActive();
     }
 
     /**
@@ -1424,6 +1438,10 @@ public class LatinIME extends InputMethodService implements
     }
 
     private void setSuggestedWords(final SuggestedWords suggestedWords) {
+        if (!mApplyingPinyinMenu && mPinyinController != null && mPinyinController.blocksNeutralStrip()) {
+            showPinyinSuggestions();
+            return;
+        }
         final SettingsValues currentSettingsValues = mSettings.getCurrent();
         mInputLogic.setSuggestedWords(suggestedWords);
         // TODO: Modify this when we support suggestions with hard keyboard
@@ -1513,7 +1531,11 @@ public class LatinIME extends InputMethodService implements
     // and there is a selection of text or it's the start of a line.
     @Override
     public void setNeutralSuggestionStrip() {
-        if (mPinyinController != null && !mPinyinController.getLastSnapshot().getPreedit().isEmpty()) return;
+        if (mApplyingPinyinMenu) return;
+        if (mPinyinController != null && mPinyinController.blocksNeutralStrip()) {
+            showPinyinSuggestions();
+            return;
+        }
         final SettingsValues currentSettings = mSettings.getCurrent();
         if (tryShowClipboardSuggestion()) {
             // clipboard suggestion has been set
@@ -1766,6 +1788,17 @@ public class LatinIME extends InputMethodService implements
 
     private void startPinyinIfNeeded(final EditorInfo editorInfo, final boolean restarting) {
         final String schema = mRichImm.getCurrentSubtype().getExtraValueOf(Constants.Subtype.ExtraValue.RIME_SCHEMA);
+        if (schema == null) {
+            if (mPinyinController != null) mPinyinController.onSubtype(null);
+            if (mRimeSession != null) {
+                mRimeSession.close();
+                mRimeSession = null;
+            }
+            mPinyinController = null;
+            final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
+            if (view != null) view.setPinyinSpaceLabel("");
+            return;
+        }
         if (mRimeSession == null) mRimeSession = new RimeSession(this);
         if (mPinyinController == null) {
             mPinyinController = new PinyinInputController(mRimeSession, new PinyinEditor() {
@@ -1781,22 +1814,39 @@ public class LatinIME extends InputMethodService implements
             });
         }
         mPinyinController.onSubtype(schema);
-        if (schema == null) {
-            final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
-            if (view != null) view.setPinyinSpaceLabel("");
+        final boolean incognito = mSettings.getCurrent().mIncognitoModeEnabled;
+        final boolean forceAscii = PinyinFields.forceAscii(editorInfo.inputType);
+        if (!mRimeSession.dataReady()) {
+            final int token = mPinyinController.beginPreparing();
+            showPinyinSuggestions();
+            mRimeSession.prepareAsync(incognito, paths -> {
+                if (mPinyinController == null || !mPinyinController.isPrepareCurrent(token)) return;
+                if (paths == null) {
+                    mPinyinController.markFailed();
+                } else {
+                    mPinyinController.onStartInput(paths.getFirst(), paths.getSecond(), paths.getThird(),
+                            false, forceAscii, incognito);
+                }
+                showPinyinSuggestions();
+            });
             return;
         }
-        final var paths = mRimeSession.prepareData();
-        if (paths == null) return;
-        final int variation = editorInfo.inputType & android.view.inputmethod.EditorInfo.TYPE_MASK_VARIATION;
-        final boolean forceAscii = mSettings.getCurrent().mInputAttributes.mIsPasswordField
-                || variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                || variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
-                || variation == android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-                || variation == android.text.InputType.TYPE_TEXT_VARIATION_URI;
-        mPinyinController.onStartInput(paths.getFirst(), paths.getSecond(), paths.getThird(), restarting, forceAscii);
-        final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
-        if (view != null) view.setPinyinSpaceLabel(mPinyinController.spaceLabel());
+        final var paths = mRimeSession.pathsFor(incognito);
+        mPinyinController.onStartInput(paths.getFirst(), paths.getSecond(), paths.getThird(),
+                restarting, forceAscii, incognito);
+        showPinyinSuggestions();
+    }
+
+    public void reloadPinyinUserDir() {
+        loadSettings();
+        if (mPinyinController == null || mRimeSession == null || !mPinyinController.isActive()) return;
+        if (mPinyinController.isPreparing()) return;
+        final boolean incognito = mSettings.getCurrent().mIncognitoModeEnabled;
+        if (!mPinyinController.incognitoDiffers(incognito)) return;
+        final var paths = mRimeSession.pathsFor(incognito);
+        mPinyinController.onStartInput(paths.getFirst(), paths.getSecond(), paths.getThird(),
+                false, mPinyinController.getForcedAscii(), incognito);
+        showPinyinSuggestions();
     }
 
     public boolean onPinyinVerticalSpaceSwipe(final int steps) {
@@ -1814,14 +1864,40 @@ public class LatinIME extends InputMethodService implements
         if (mPinyinController == null) return false;
         final Integer keysym = helium314.keyboard.latin.pinyin.RimeKeyMapper.INSTANCE.hardwareKeysym(keyEvent);
         if (keysym == null) return false;
-        if (!mPinyinController.onEventCode(keysym, keyEvent.isShiftPressed())) return false;
+        if (!mPinyinController.onEventCode(keysym, keyEvent.isShiftPressed(), false)) return false;
         showPinyinSuggestions();
         return true;
     }
 
+    @Override
+    public void onRimePage(final int delta) {
+        if (mPinyinController != null && mPinyinController.onPage(delta)) showPinyinSuggestions();
+    }
+
+    private boolean isPinyinSymbolsLayer() {
+        final Keyboard keyboard = mKeyboardSwitcher.getKeyboard();
+        if (keyboard == null) return false;
+        final KeyboardElement element = keyboard.mId.getElement();
+        return element == KeyboardElement.SYMBOLS || element == KeyboardElement.SYMBOLS_SHIFTED;
+    }
+
     private void showPinyinSuggestions() {
-        if (mPinyinController == null || !hasSuggestionStripView()) return;
+        if (mPinyinController == null || !mPinyinController.isActive() || !hasSuggestionStripView()) return;
+        final MainKeyboardView keyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (keyboardView != null) keyboardView.setPinyinSpaceLabel(mPinyinController.spaceLabel());
+        if (mPinyinController.isPreparing()) {
+            mSuggestionStripView.showRimeStatus(getString(R.string.pinyin_preparing));
+            return;
+        }
+        if (mPinyinController.isFailed()) {
+            mSuggestionStripView.showRimeStatus(getString(R.string.pinyin_load_failed));
+            return;
+        }
         final var snapshot = mPinyinController.getLastSnapshot();
+        if (mPinyinController.getAsciiMode() && snapshot.getPreedit().isEmpty() && snapshot.getCandidates().isEmpty()) {
+            setNeutralSuggestionStrip();
+            return;
+        }
         final java.util.ArrayList<SuggestedWords.SuggestedWordInfo> words = new java.util.ArrayList<>();
         for (int i = 0; i < snapshot.getCandidates().size(); i++) {
             final var candidate = snapshot.getCandidates().get(i);
@@ -1834,10 +1910,14 @@ public class LatinIME extends InputMethodService implements
                     i,
                     0));
         }
+        mSuggestionStripView.setRimePage(snapshot.getPageNo(), snapshot.isLastPage());
         final SuggestedWords suggested = new SuggestedWords(
                 words, null, null, false, false, false, SuggestedWords.INPUT_STYLE_RIME, 0);
-        setSuggestedWords(suggested);
-        final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
-        if (view != null) view.setPinyinSpaceLabel(mPinyinController.spaceLabel());
+        mApplyingPinyinMenu = true;
+        try {
+            setSuggestedWords(suggested);
+        } finally {
+            mApplyingPinyinMenu = false;
+        }
     }
 }

@@ -98,11 +98,16 @@ private fun SubtypeRow(subtype: InputMethodSubtype, isEnabled: Boolean) {
         var showNoDictDialog by remember { mutableStateOf(false) }
         Column(modifier = Modifier.weight(1f)) {
             Text(subtype.displayName(), style = MaterialTheme.typography.bodyLarge)
-            val description = if (SubtypeSettings.isAdditionalSubtype(subtype)) {
-                val secondaryLocales = subtype.getExtraValueOf(ExtraValue.SECONDARY_LOCALES)?.split(Separators.KV)
-                    ?.joinToString(", ") { it.constructLocale().localizedDisplayName(ctx.resources) }
-                stringResource(R.string.custom_subtype) + (secondaryLocales?.let { "\n$it" } ?: "")
-            } else null
+            val description = when {
+                subtype.containsExtraValueKey(ExtraValue.RIME_SCHEMA) ->
+                    stringResource(R.string.subtype_zh_CN_summary)
+                SubtypeSettings.isAdditionalSubtype(subtype) -> {
+                    val secondaryLocales = subtype.getExtraValueOf(ExtraValue.SECONDARY_LOCALES)?.split(Separators.KV)
+                        ?.joinToString(", ") { it.constructLocale().localizedDisplayName(ctx.resources) }
+                    stringResource(R.string.custom_subtype) + (secondaryLocales?.let { "\n$it" } ?: "")
+                }
+                else -> null
+            }
             if (description != null)
                 Text(
                     text = description,
@@ -113,7 +118,7 @@ private fun SubtypeRow(subtype: InputMethodSubtype, isEnabled: Boolean) {
         Switch(
             checked = isEnabled,
             onCheckedChange = {
-                if (it && !dictsAvailable(subtype.locale(), ctx))
+                if (it && !subtype.containsExtraValueKey(ExtraValue.RIME_SCHEMA) && !dictsAvailable(subtype.locale(), ctx))
                     showNoDictDialog = true
                 if (it) SubtypeSettings.addEnabledSubtype(ctx.prefs(), subtype)
                 else SubtypeSettings.removeEnabledSubtype(ctx, subtype)

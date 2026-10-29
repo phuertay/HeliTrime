@@ -109,6 +109,7 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             KeyCode.TOGGLE_AUTOCORRECT -> return settings.toggleAutoCorrect()
             KeyCode.TOGGLE_INCOGNITO_MODE -> {
                 settings.toggleAlwaysIncognitoMode()
+                latinIME.reloadPinyinUserDir()
                 BackgroundGatheringCache.clear()
                 latinIME.setGestureDataGatheringMode(latinIME.currentInputEditorInfo, false)
                 return

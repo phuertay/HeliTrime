@@ -441,6 +441,7 @@
          (US) should be an abbreviation of United States. -->
     <string name="subtype_en_US">English (US)</string>
     <string name="subtype_zh_CN">Chinese (Simplified)</string>
+    <string name="subtype_zh_CN_summary">26-key pinyin. The personal dictionary stays the Latin word list and is not imported into pinyin.</string>
     <string name="pinyin_preparing">Preparing pinyin</string>
     <string name="pinyin_load_failed">Pinyin dictionary failed to load</string>
     <!-- Description for Spanish (US) keyboard subtype

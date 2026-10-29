@@ -1,0 +1,5 @@
+libiconv 1.17
+Copyright (C) Free Software Foundation, Inc.
+License: GNU Lesser General Public License, version 2.1 or later.
+Shipped as a shared library only.
+https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html

@@ -3,6 +3,7 @@ package helium314.keyboard.latin.pinyin
 /** What [PinyinInputController] needs from librime. Tests pass a fake. */
 interface RimeClient {
     fun startup(sharedDir: String, userDir: String, prebuiltDir: String): Boolean
+    fun releaseIncognitoDir()
     fun createSession(): Long
     fun destroySession(session: Long)
     fun selectSchema(session: Long, schemaId: String): Boolean

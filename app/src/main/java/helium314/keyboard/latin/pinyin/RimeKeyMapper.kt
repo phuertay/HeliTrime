@@ -7,6 +7,8 @@ object RimeKeyMapper {
     const val XK_SPACE = 0x20
     const val XK_BACKSPACE = 0xff08
     const val XK_RETURN = 0xff0d
+    const val XK_PRIOR = 0xff55
+    const val XK_NEXT = 0xff56
 
     fun letterKeysym(codePoint: Int): Int {
         return if (codePoint in 'A'.code..'Z'.code) codePoint + 32 else codePoint

@@ -23,43 +23,95 @@ class PinyinInputController(
         private set
     private var createdSessions: Int = 0
     private var swipeLatched: Boolean = false
+    private var preparing: Boolean = false
+    private var failed: Boolean = false
+    private var incognito: Boolean = false
+    private var prepareGeneration: Int = 0
+    private val pending = ArrayList<Pending>()
     var lastSnapshot: RimeSnapshot = RimeSnapshot.empty
         private set
 
     fun sessionsCreated(): Int = createdSessions
+    fun isPreparing(): Boolean = preparing
+    fun isFailed(): Boolean = failed
+    fun isActive(): Boolean = active
+    fun incognitoDiffers(value: Boolean): Boolean = incognito != value
 
     fun onSubtype(rimeSchema: String?) {
+        prepareGeneration += 1
         if (rimeSchema == null) {
             dropSession(commit = false)
             active = false
+            preparing = false
+            failed = false
+            pending.clear()
             return
         }
         schemaId = rimeSchema
         active = true
     }
 
-    fun onStartInput(sharedDir: String, userDir: String, prebuiltDir: String, restarting: Boolean, forceAscii: Boolean) {
-        if (!active) return
-        forcedAscii = forceAscii
-        if (restarting && session != 0L) {
-            asciiMode = forcedAscii || client.readSnapshot(session).let { asciiMode }
-            if (forcedAscii) {
+    fun beginPreparing(): Int {
+        if (!active) return prepareGeneration
+        preparing = true
+        failed = false
+        prepareGeneration += 1
+        return prepareGeneration
+    }
+
+    fun isPrepareCurrent(token: Int): Boolean = active && preparing && token == prepareGeneration
+
+    fun markFailed() {
+        preparing = false
+        prepareGeneration += 1
+        failAndCommitQueued()
+    }
+
+    fun onStartInput(
+        sharedDir: String,
+        userDir: String,
+        prebuiltDir: String,
+        restarting: Boolean,
+        forceAscii: Boolean,
+        incognito: Boolean = false,
+    ): Boolean {
+        if (!active) return false
+        val keep = restarting && session != 0L && this.incognito == incognito && !failed && !preparing
+        this.forcedAscii = forceAscii
+        if (keep) {
+            if (forceAscii && !asciiMode) {
                 asciiMode = true
                 client.setOption(session, "ascii_mode", true)
+                client.clearComposition(session)
+                editor.finishComposing()
+                lastSnapshot = RimeSnapshot.empty
             }
-            return
+            return true
         }
+        this.incognito = incognito
+        preparing = false
+        prepareGeneration += 1
+        if (session != 0L) dropSession(commit = false)
+        if (!incognito) client.releaseIncognitoDir()
         if (!client.startup(sharedDir, userDir, prebuiltDir)) {
-            active = false
-            return
+            failAndCommitQueued()
+            return false
         }
         session = client.createSession()
         createdSessions += 1
-        client.selectSchema(session, schemaId)
+        if (session == 0L || !client.selectSchema(session, schemaId)) {
+            if (session != 0L) client.destroySession(session)
+            session = 0
+            failAndCommitQueued()
+            return false
+        }
         client.setOption(session, "simplification", true)
         asciiMode = forceAscii
         client.setOption(session, "ascii_mode", asciiMode)
+        failed = false
         lastSnapshot = RimeSnapshot.empty
+        flushPending(commitRaw = false)
+        return true
     }
 
     fun onFinishInput(destroy: Boolean) {
@@ -73,15 +125,27 @@ class PinyinInputController(
         }
     }
 
-    fun onEventCode(code: Int, shifted: Boolean): Boolean {
-        if (!active || session == 0L) return false
+    fun onEventCode(code: Int, shifted: Boolean, symbols: Boolean = false): Boolean {
+        if (!active || failed) return false
         if (code == KeyCode.SHIFT) return false
+        if (preparing) {
+            if (code < 0) return false
+            pending.add(Pending.Key(code, shifted, symbols))
+            return true
+        }
+        if (session == 0L) return false
+        if (symbols && code in 32..126) return insertRaw(code)
         if (asciiMode) return handleAscii(code)
-        return handleChinese(code, shifted)
+        return handleChinese(code)
     }
 
     fun onText(text: String): Boolean {
-        if (!active || session == 0L || text.isEmpty()) return false
+        if (!active || failed || text.isEmpty()) return false
+        if (preparing) {
+            pending.add(Pending.Text(text))
+            return true
+        }
+        if (session == 0L) return false
         if (asciiMode) {
             editor.commit(text)
             return true
@@ -92,8 +156,9 @@ class PinyinInputController(
     }
 
     fun onVerticalSpaceSwipe(steps: Int): Boolean {
-        if (!active || session == 0L) return false
+        if (!active || failed) return false
         if (steps <= 0) return false
+        if (preparing || session == 0L) return true
         if (!swipeLatched) {
             swipeLatched = true
             if (!forcedAscii) {
@@ -114,14 +179,22 @@ class PinyinInputController(
     }
 
     fun onSelectCandidate(index: Int): Boolean {
-        if (!active || session == 0L || asciiMode) return false
+        if (!active || failed || preparing || session == 0L || asciiMode) return false
         client.selectCandidate(session, index)
         publish()
         return true
     }
 
+    fun onPage(delta: Int): Boolean {
+        if (!active || failed || preparing || session == 0L || asciiMode || delta == 0) return false
+        val keysym = if (delta > 0) RimeKeyMapper.XK_NEXT else RimeKeyMapper.XK_PRIOR
+        client.processKey(session, keysym, 0)
+        publish()
+        return true
+    }
+
     fun onCursorMoved(belated: Boolean) {
-        if (!active || session == 0L || belated) return
+        if (!active || failed || session == 0L || belated) return
         if (lastSnapshot.preedit.isEmpty()) return
         client.clearComposition(session)
         editor.finishComposing()
@@ -132,7 +205,20 @@ class PinyinInputController(
         // Ignore glide. Commit nothing.
     }
 
+    fun blocksNeutralStrip(): Boolean {
+        if (!active) return false
+        if (preparing || failed) return true
+        if (asciiMode) return false
+        return lastSnapshot.preedit.isNotEmpty() || lastSnapshot.candidates.isNotEmpty()
+    }
+
     fun spaceLabel(): String = if (asciiMode) "英文" else "中文"
+
+    private fun insertRaw(code: Int): Boolean {
+        endComposition()
+        editor.commit(code.toChar().toString())
+        return true
+    }
 
     private fun handleAscii(code: Int): Boolean {
         val text = when (code) {
@@ -143,10 +229,11 @@ class PinyinInputController(
             else -> return false
         }
         editor.commit(text)
+        lastSnapshot = RimeSnapshot.empty
         return true
     }
 
-    private fun handleChinese(code: Int, shifted: Boolean): Boolean {
+    private fun handleChinese(code: Int): Boolean {
         when (code) {
             Constants.CODE_SPACE -> client.processKey(session, RimeKeyMapper.XK_SPACE, 0)
             KeyCode.DELETE -> client.processKey(session, RimeKeyMapper.XK_BACKSPACE, 0)
@@ -162,9 +249,6 @@ class PinyinInputController(
                 if (code in 32..126) client.processKey(session, code, 0) else return false
             }
         }
-        if (shifted) {
-            // Shift+letter stays in 中文. The keysym above is already lowercase.
-        }
         publish()
         return true
     }
@@ -172,6 +256,7 @@ class PinyinInputController(
     private fun endComposition() {
         client.clearComposition(session)
         editor.finishComposing()
+        lastSnapshot = RimeSnapshot.empty
     }
 
     private fun publish() {
@@ -188,5 +273,36 @@ class PinyinInputController(
         client.destroySession(session)
         session = 0
         lastSnapshot = RimeSnapshot.empty
+    }
+
+    private fun failAndCommitQueued() {
+        failed = true
+        session = 0
+        flushPending(commitRaw = true)
+    }
+
+    private fun flushPending(commitRaw: Boolean) {
+        val queued = pending.toList()
+        pending.clear()
+        if (commitRaw) {
+            for (item in queued) {
+                when (item) {
+                    is Pending.Key -> if (item.code in 32..126) editor.commit(item.code.toChar().toString())
+                    is Pending.Text -> editor.commit(item.text)
+                }
+            }
+            return
+        }
+        for (item in queued) {
+            when (item) {
+                is Pending.Key -> onEventCode(item.code, item.shifted, item.symbols)
+                is Pending.Text -> onText(item.text)
+            }
+        }
+    }
+
+    private sealed class Pending {
+        class Key(val code: Int, val shifted: Boolean, val symbols: Boolean) : Pending()
+        class Text(val text: String) : Pending()
     }
 }
