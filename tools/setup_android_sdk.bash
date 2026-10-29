@@ -6,7 +6,9 @@ set -euo pipefail
 
 ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 NDK_VERSION="28.0.13004108"
-PLATFORM="android-37"
+# compileSdk 37 is published as the versioned package platforms;android-37.0.
+# sdkmanager has no unversioned platforms;android-37.
+PLATFORM="android-37.0"
 CMDLINE_ZIP="commandlinetools-linux-15859902_latest.zip"
 CMDLINE_URL="https://dl.google.com/android/repository/${CMDLINE_ZIP}"
 CMDLINE_SHA="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
