@@ -6,7 +6,9 @@ set -euo pipefail
 
 ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 NDK_VERSION="28.0.13004108"
-PLATFORM="android-37"
+# cmdline-tools 15859902 publishes API 37 as platforms;android-37.0.
+# Older snapshots used platforms;android-37. compileSdk stays 37.
+PLATFORM_PACKAGES=("platforms;android-37" "platforms;android-37.0")
 CMDLINE_ZIP="commandlinetools-linux-15859902_latest.zip"
 CMDLINE_URL="https://dl.google.com/android/repository/${CMDLINE_ZIP}"
 CMDLINE_SHA="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
@@ -50,10 +52,24 @@ export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-t
 
 # sdkmanager prompts for licenses. A second run is a no-op.
 yes | sdkmanager --sdk_root="${ANDROID_HOME}" --licenses >/dev/null || true
+platform_installed=0
+for pkg in "${PLATFORM_PACKAGES[@]}"; do
+  if sdkmanager --sdk_root="${ANDROID_HOME}" "${pkg}"; then
+    platform_installed=1
+    break
+  fi
+  echo "Package ${pkg} is not in this cmdline-tools index; trying the next name." >&2
+done
+if [[ "${platform_installed}" -ne 1 ]]; then
+  echo "Could not install an API 37 platform." >&2
+  exit 1
+fi
 sdkmanager --sdk_root="${ANDROID_HOME}" \
-  "platforms;${PLATFORM}" \
   "ndk;${NDK_VERSION}" \
   "platform-tools"
+
+# A symlink named android-37 makes sdkmanager report the 37.0 package
+# in the wrong directory. AGP 9.1 reads platforms/android-37.0 for compileSdk 37.
 
 sudo tee /etc/profile.d/android-sdk.sh >/dev/null <<EOF
 export ANDROID_HOME=${ANDROID_HOME}
@@ -66,12 +82,14 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -f "${repo_root}/settings.gradle" ]]; then
   cat > "${repo_root}/local.properties" <<EOF
 sdk.dir=${ANDROID_HOME}
-ndk.dir=${ANDROID_HOME}/ndk/${NDK_VERSION}
 EOF
 fi
 
 test -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-test -d "${ANDROID_HOME}/platforms/${PLATFORM}"
+if [[ ! -d "${ANDROID_HOME}/platforms/android-37" && ! -d "${ANDROID_HOME}/platforms/android-37.0" ]]; then
+  echo "API 37 platform directory is missing." >&2
+  exit 1
+fi
 test -d "${ANDROID_HOME}/ndk/${NDK_VERSION}"
 echo "Android SDK ready: ${ANDROID_HOME}"
 echo "NDK ready: ${ANDROID_HOME}/ndk/${NDK_VERSION}"
