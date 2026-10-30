@@ -74,6 +74,9 @@ public final class Constants {
             /** Contains the layouts used by this subtype. This extra value is private to LatinIME.*/
             public static final String KEYBOARD_LAYOUT_SET = "KeyboardLayoutSet";
 
+            /** librime schema id for this subtype, for example luna_pinyin. */
+            public static final String RIME_SCHEMA = "RimeSchema";
+
             /** Indicates that this subtype is an additional subtype that the user defined. This extra value is private to LatinIME. */
             public static final String IS_ADDITIONAL_SUBTYPE = "isAdditionalSubtype";
 

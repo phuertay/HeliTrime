@@ -491,6 +491,10 @@
 suggestions in a software keyboard. This setting won't give suggestions in any particular
 language, hence "No language". -->
     <string name="subtype_no_language">No language</string>
+    <string name="subtype_zh_CN">Chinese (Pinyin)</string>
+    <string name="subtype_zh_CN_summary">The personal dictionary is not imported into the pinyin dictionary.</string>
+    <string name="pinyin_preparing">Preparing pinyin</string>
+    <string name="pinyin_load_failed">Pinyin failed to load</string>
     <!-- Description for Emoji keyboard subtype -->
     <string name="subtype_emoji">Emoji</string>
     <!-- Title of the button to add custom style entry in the settings dialog. Preferably 10 characters or less. -->

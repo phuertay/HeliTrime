@@ -93,6 +93,8 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         }
 
         if (event.isHandled) {
+            val pinyin = latinIME.pinyinController
+            if (pinyin != null && pinyin.onEvent(event.codePoint, event.keyCode, false)) return true
             inputLogic.onCodeInput(
                 settings.current, event,
                 keyboardSwitcher.getKeyboardCapsMode(), // TODO: this is not necessarily correct for a hardware keyboard right now
@@ -110,6 +112,7 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
                 settings.toggleAlwaysIncognitoMode()
                 BackgroundGatheringCache.clear()
                 latinIME.setGestureDataGatheringMode(latinIME.currentInputEditorInfo, false)
+                latinIME.pinyinController?.onIncognitoChanged(Settings.getValues().mIncognitoModeEnabled)
                 return
             }
             KeyCode.BACKGROUND_GATHERING -> {
@@ -208,7 +211,9 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         else -> false
     }
 
-    override fun onVerticalSpaceSwipe(steps: Int): Boolean = when (Settings.getValues().mSpaceSwipeVertical) {
+    override fun onVerticalSpaceSwipe(steps: Int): Boolean {
+        latinIME.pinyinController?.onVerticalSpaceSwipe(steps)
+        return when (Settings.getValues().mSpaceSwipeVertical) {
         KeyboardActionListener.SwipeAction.MOVE_CURSOR -> onMoveCursorVertically(steps)
         KeyboardActionListener.SwipeAction.SWITCH_LANGUAGE -> onLanguageSlide(steps)
         KeyboardActionListener.SwipeAction.TOGGLE_NUMPAD -> {
@@ -237,9 +242,11 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             }
         }
         else -> false
+        }
     }
 
     override fun onEndSpaceSwipe() {
+        latinIME.pinyinController?.onEndSpaceSwipe()
         initialSubtype = null
         subtypeSwitchCount = 0
     }

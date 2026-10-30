@@ -45,6 +45,9 @@ import helium314.keyboard.event.Event;
 import helium314.keyboard.event.InputTransaction;
 import helium314.keyboard.keyboard.Keyboard;
 import helium314.keyboard.keyboard.KeyboardId;
+import helium314.keyboard.latin.pinyin.PinyinControllersKt;
+import helium314.keyboard.latin.pinyin.PinyinInputController;
+import helium314.keyboard.latin.pinyin.PinyinSubtypeKt;
 import helium314.keyboard.keyboard.KeyboardLayoutSet;
 import helium314.keyboard.keyboard.KeyboardSwitcher;
 import helium314.keyboard.keyboard.MainKeyboardView;
@@ -119,6 +122,49 @@ public class LatinIME extends InputMethodService implements
             DictionaryFacilitatorProvider.getDictionaryFacilitator(false);
     private final DictionaryFacilitator mOriginalDictionaryFacilitator = mDictionaryFacilitator;
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
+    private PinyinInputController mPinyinController;
+
+    public PinyinInputController getPinyinController() {
+        return mPinyinController;
+    }
+
+    public RichInputConnection pinyinConnection() {
+        return mInputLogic.mConnection;
+    }
+
+    public void pinyinInvalidateKeyboard() {
+        final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
+        if (view != null) view.invalidateAllKeys();
+    }
+
+    public boolean pinyinSymbolsLayer() {
+        final Keyboard keyboard = mKeyboardSwitcher.getKeyboard();
+        if (keyboard == null) return false;
+        return PinyinControllersKt.keyboardIsSymbols(keyboard.mId.getElement());
+    }
+
+    private void syncPinyinSession(final EditorInfo editorInfo, final boolean restarting,
+            final boolean differentField, final SettingsValues settings) {
+        final String extra = mRichImm.getCurrentSubtype().getRawSubtype().getExtraValue();
+        if (!PinyinSubtypeKt.isRimeSubtype(extra)) {
+            if (mPinyinController != null) {
+                mPinyinController.onLeaveSubtype();
+                mPinyinController = null;
+            }
+            return;
+        }
+        if (mPinyinController == null) {
+            mPinyinController = PinyinControllersKt.createPinyinController(this);
+        }
+        mPinyinController.onStartInput(restarting && !differentField,
+                PinyinControllersKt.editorForcesAscii(editorInfo.inputType),
+                settings.mIncognitoModeEnabled);
+    }
+
+    @Override
+    public void onRimePage(final boolean backward) {
+        if (mPinyinController != null) mPinyinController.onPage(backward);
+    }
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -814,6 +860,7 @@ public class LatinIME extends InputMethodService implements
             return;
         }
         Log.i(TAG, (restarting ? "Res" : "S") +"tarting input. Cursor position = " + editorInfo.initialSelStart + "," + editorInfo.initialSelEnd);
+        syncPinyinSession(editorInfo, restarting, isDifferentTextField, currentSettingsValues);
         if (DebugFlags.DEBUG_ENABLED) {
             EditorInfoCompatUtils.INSTANCE.debugLog(editorInfo, TAG);
         }
@@ -951,6 +998,7 @@ public class LatinIME extends InputMethodService implements
 
     void onFinishInputInternal() {
         super.onFinishInput();
+        if (mPinyinController != null) mPinyinController.onFinishInput();
         Log.i(TAG, "onFinishInput");
 
         mDictionaryFacilitator.onFinishInput();
@@ -995,6 +1043,11 @@ public class LatinIME extends InputMethodService implements
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
         final SettingsValues settingsValues = mSettings.getCurrent();
+        if (mPinyinController != null && mPinyinController.onUpdateSelection(
+                mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart, newSelStart,
+                        oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd))) {
+            return;
+        }
         if (isInputViewShown()
                 && mInputLogic.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
                 composingSpanStart, composingSpanEnd, settingsValues)) {
@@ -1298,6 +1351,7 @@ public class LatinIME extends InputMethodService implements
 
     // called when language switch key is pressed (either the keyboard key, or long-press comma)
     public void switchToNextSubtype() {
+        if (mPinyinController != null) mPinyinController.onLeaveSubtype();
         final boolean switchSubtype = mSettings.getCurrent().mLanguageSwitchKeyToOtherSubtypes;
         final boolean switchIme = mSettings.getCurrent().mLanguageSwitchKeyToOtherImes;
 
@@ -1341,6 +1395,10 @@ public class LatinIME extends InputMethodService implements
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
             mRichImm.switchToShortcutIme(this);
         }
+        if (mPinyinController != null && mPinyinController.onEvent(event.getCodePoint(), event.getKeyCode(), pinyinSymbolsLayer())) {
+            mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+            return;
+        }
         InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
         updateStateAfterInputTransaction(completeInputTransaction);
@@ -1349,6 +1407,7 @@ public class LatinIME extends InputMethodService implements
 
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;
+        if (mPinyinController != null && mPinyinController.onText(rawText)) return;
         // TODO: have the keyboard pass the correct key code when we need it.
         Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
         InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
@@ -1359,6 +1418,7 @@ public class LatinIME extends InputMethodService implements
     }
 
     public void onStartBatchInput() {
+        if (mPinyinController != null && mPinyinController.onStartBatchInput()) return;
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }
@@ -1461,6 +1521,10 @@ public class LatinIME extends InputMethodService implements
     // interface
     @Override
     public void pickSuggestionManually(SuggestedWordInfo suggestionInfo) {
+        if (suggestionInfo != null && suggestionInfo.isKindOf(SuggestedWordInfo.KIND_RIME)) {
+            if (mPinyinController != null) mPinyinController.onPick(suggestionInfo.mCandidateIndex);
+            return;
+        }
         InputTransaction completeInputTransaction = mInputLogic.onPickSuggestionManually(
                 mSettings.getCurrent(), suggestionInfo, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
         updateStateAfterInputTransaction(completeInputTransaction);
@@ -1487,6 +1551,7 @@ public class LatinIME extends InputMethodService implements
     // and there is a selection of text or it's the start of a line.
     @Override
     public void setNeutralSuggestionStrip() {
+        if (mPinyinController != null && mPinyinController.shouldKeepStrip()) return;
         final SettingsValues currentSettings = mSettings.getCurrent();
         if (tryShowClipboardSuggestion()) {
             // clipboard suggestion has been set

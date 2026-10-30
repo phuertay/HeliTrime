@@ -34,6 +34,7 @@ android {
             isShrinkResources = false
             isDebuggable = false
             isJniDebuggable = false
+            matchingFallbacks += listOf("release")
         }
         debug {
             // "normal" debug has minify for smaller APK to fit the GitHub 25 MB limit when zipped
@@ -45,6 +46,7 @@ android {
         create("runTests") { // build variant for running tests on CI that skips tests known to fail
             isMinifyEnabled = false
             isJniDebuggable = false
+            matchingFallbacks += listOf("debug")
         }
         create("debugNoMinify") { // for faster builds in IDE
             isDebuggable = true
@@ -52,6 +54,7 @@ android {
             isJniDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".debug"
+            matchingFallbacks += listOf("debug")
             //isDefault = true // would be nice as default, but breaks unit test handling in Android Studio
         }
 
@@ -70,6 +73,12 @@ android {
                 }
             }
         }
+    }
+
+    // AGP 9 creates unit-test variants for debug only. CI runs the runTests
+    // build type so the known-failing cases can return early.
+    androidComponents.beforeVariants(androidComponents.selector().withBuildType("runTests")) { builder ->
+        (builder as com.android.build.api.variant.HasUnitTestBuilder).enableUnitTest = true
     }
 
     buildFeatures {
@@ -116,6 +125,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":rime"))
+
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
     implementation("androidx.recyclerview:recyclerview:1.4.0")
