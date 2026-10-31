@@ -2,6 +2,9 @@ name: Build debug APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - cursor/debug-apk-rime-sources-4d70
 
 jobs:
   build:
