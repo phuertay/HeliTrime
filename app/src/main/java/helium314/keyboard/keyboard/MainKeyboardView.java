@@ -54,6 +54,7 @@ import helium314.keyboard.latin.common.CoordinateUtils;
 import helium314.keyboard.latin.define.DebugFlags;
 import helium314.keyboard.latin.settings.DebugSettings;
 import helium314.keyboard.latin.settings.Defaults;
+import helium314.keyboard.latin.pinyin.PinyinSpaceLabel;
 import helium314.keyboard.latin.settings.Settings;
 import helium314.keyboard.latin.utils.KtxKt;
 import helium314.keyboard.latin.utils.LanguageOnSpacebarUtils;
@@ -813,8 +814,11 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         paint.setTextAlign(Align.CENTER);
         paint.setTextSize(mLanguageOnSpacebarTextSize);
         final String customText = Settings.getValues().mSpaceBarText;
+        final String pinyinLabel = PinyinSpaceLabel.INSTANCE.getText();
         final String spaceText;
-        if (!customText.isEmpty()) {
+        if (pinyinLabel != null) {
+            spaceText = pinyinLabel;
+        } else if (!customText.isEmpty()) {
             spaceText = customText;
         } else if (DebugFlags.DEBUG_ENABLED) {
             final String l = KeyboardSwitcher.getInstance().getLocaleAndConfidenceInfo();

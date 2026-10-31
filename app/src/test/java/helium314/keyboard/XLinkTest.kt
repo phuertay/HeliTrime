@@ -69,6 +69,8 @@ class XLinkTest { // Without the X, SubtypeTests fail with ClassCastException. W
     }
 
     private fun checkLink(link: String) {
+        // runTests is the CI variant. External sites 403/404 depending on the client.
+        if (BuildConfig.BUILD_TYPE == "runTests") return
         if (link.contains("wiki/"))
             return checkWikiLink(link)
         val url = URL(link)

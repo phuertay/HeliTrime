@@ -98,7 +98,9 @@ private fun SubtypeRow(subtype: InputMethodSubtype, isEnabled: Boolean) {
         var showNoDictDialog by remember { mutableStateOf(false) }
         Column(modifier = Modifier.weight(1f)) {
             Text(subtype.displayName(), style = MaterialTheme.typography.bodyLarge)
-            val description = if (SubtypeSettings.isAdditionalSubtype(subtype)) {
+            val description = if (subtype.getExtraValueOf(ExtraValue.RIME_SCHEMA) != null) {
+                stringResource(R.string.subtype_zh_CN_summary)
+            } else if (SubtypeSettings.isAdditionalSubtype(subtype)) {
                 val secondaryLocales = subtype.getExtraValueOf(ExtraValue.SECONDARY_LOCALES)?.split(Separators.KV)
                     ?.joinToString(", ") { it.constructLocale().localizedDisplayName(ctx.resources) }
                 stringResource(R.string.custom_subtype) + (secondaryLocales?.let { "\n$it" } ?: "")
@@ -125,6 +127,7 @@ private fun SubtypeRow(subtype: InputMethodSubtype, isEnabled: Boolean) {
 }
 
 private fun dictsAvailable(locale: Locale, context: Context): Boolean {
+    if (locale.language == "zh") return true
     if (locale.language == SubtypeLocaleUtils.NO_LANGUAGE) return true // incorrect, but we don't want to show the dialog for "no language"
     val (dicts, hasInternal) = getUserAndInternalDictionaries(context, locale)
     return hasInternal || dicts.isNotEmpty()
