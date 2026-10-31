@@ -55,6 +55,8 @@ fun editorForcesAscii(inputType: Int): Boolean {
         || InputTypeUtils.isUriOrEmailType(inputType)
 }
 
+/** Symbols and the numpad insert the key. They do not drive librime. */
 fun keyboardIsSymbols(element: KeyboardElement?): Boolean {
     return element == KeyboardElement.SYMBOLS || element == KeyboardElement.SYMBOLS_SHIFTED
+        || element?.isNumberLayout == true
 }

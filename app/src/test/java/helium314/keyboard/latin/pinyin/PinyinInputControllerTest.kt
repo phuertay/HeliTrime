@@ -1,6 +1,7 @@
 package helium314.keyboard.latin.pinyin
 
 import helium314.keyboard.ShadowInputMethodManager2
+import helium314.keyboard.keyboard.KeyboardElement
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
 import helium314.keyboard.latin.SuggestedWords
 import helium314.keyboard.latin.SuggestedWords.SuggestedWordInfo
@@ -20,6 +21,13 @@ import kotlin.test.assertTrue
 @Config(shadows = [ShadowInputMethodManager2::class])
 class PinyinInputControllerTest {
     @Test
+    fun numpadIsNotSentToRime() {
+        assertTrue(keyboardIsSymbols(KeyboardElement.NUMPAD))
+        assertTrue(keyboardIsSymbols(KeyboardElement.PHONE))
+        assertFalse(keyboardIsSymbols(KeyboardElement.ALPHABET))
+    }
+
+    @Test
     fun englishSubtypeConstructsNoRimeSession() {
         assertFalse(isRimeSubtype("AsciiCapable,EmojiCapable,KeyboardLayoutSet=qwerty"))
         assertEquals(0, RimeSessionFactory.created)
@@ -33,6 +41,8 @@ class PinyinInputControllerTest {
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
         for (letter in "nihao") controller.onEvent(letter.code, 0, false)
         assertEquals("nihao", editor.composing)
+        assertTrue(controller.onUpdateSelection(belated = true))
+        assertEquals("nihao", editor.composing)
         controller.onPick(0)
         assertEquals("你好", editor.committed)
         assertEquals("", editor.composing)
@@ -43,6 +53,7 @@ class PinyinInputControllerTest {
 
         controller.onUpdateSelection(belated = false)
         assertEquals("", editor.composing)
+        assertFalse(controller.onEvent(0, KeyCode.DELETE, false))
 
         assertFalse(controller.onEvent(-1, KeyCode.EMOJI, false))
     }

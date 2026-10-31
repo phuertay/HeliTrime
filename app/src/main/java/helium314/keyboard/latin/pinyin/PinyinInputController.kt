@@ -101,7 +101,10 @@ class PinyinInputController(
         if (!wouldConsume(codePoint, keyCode, symbolsLayer)) return false
         if (asciiMode) return false
         when {
-            RimeKeyMapper.isDelete(keyCode) -> client.processKey(RimeKeyMapper.XK_BACKSPACE, 0)
+            RimeKeyMapper.isDelete(keyCode) -> {
+                if (!hasPreedit) return false
+                client.processKey(RimeKeyMapper.XK_BACKSPACE, 0)
+            }
             RimeKeyMapper.isEnter(codePoint) -> {
                 if (!hasPreedit) return false
                 client.commitComposition()
@@ -160,10 +163,15 @@ class PinyinInputController(
         swipeLatched = false
     }
 
-    /** A belated update is the one setComposingText itself caused. */
+    /**
+     * @param belated true when this update is the one setComposingText caused, or the cursor is
+     * still inside that span. A real move outside the span drops the preedit.
+     * @return true to skip Latin recorrection. In 中文 that reset desyncs the connection and the
+     * next letter never shows.
+     */
     fun onUpdateSelection(belated: Boolean): Boolean {
-        if (belated) return false
-        if (!hasPreedit) return false
+        if (asciiMode || !ready || failed) return false
+        if (!hasPreedit || belated) return true
         dropPreedit()
         return true
     }
