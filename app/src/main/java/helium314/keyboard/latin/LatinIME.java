@@ -309,6 +309,9 @@ public class LatinIME extends InputMethodService implements
             if (latinIme == null) {
                 return;
             }
+            if (PinyinSubtypeKt.isRimeSubtype(latinIme.mRichImm.getCurrentSubtype().getRawSubtype().getExtraValue())) {
+                return;
+            }
             if (!latinIme.mSettings.getCurrent().needsToLookupSuggestions()) {
                 return;
             }
@@ -800,6 +803,10 @@ public class LatinIME extends InputMethodService implements
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
         }
         mSettings.saveSubtypeForApp(mRichImm.getCurrentSubtype(), getCurrentInputEditorInfo().packageName);
+        final EditorInfo editorInfo = getCurrentInputEditorInfo();
+        if (editorInfo != null) {
+            syncPinyinSession(editorInfo, true, false, mSettings.getCurrent());
+        }
     }
 
     /** alias to onCurrentInputMethodSubtypeChanged with a better name, as it's also used for internal switching */
@@ -1043,10 +1050,14 @@ public class LatinIME extends InputMethodService implements
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
         final SettingsValues settingsValues = mSettings.getCurrent();
-        if (mPinyinController != null && mPinyinController.onUpdateSelection(
-                mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart, newSelStart,
-                        oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd))) {
-            return;
+        if (mPinyinController != null) {
+            final boolean belated = mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart,
+                    newSelStart, oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd);
+            final boolean stillInside = newSelStart == newSelEnd && composingSpanStart >= 0
+                    && newSelStart >= composingSpanStart && newSelStart <= composingSpanEnd;
+            if (mPinyinController.onUpdateSelection(belated || stillInside)) {
+                return;
+            }
         }
         if (isInputViewShown()
                 && mInputLogic.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,

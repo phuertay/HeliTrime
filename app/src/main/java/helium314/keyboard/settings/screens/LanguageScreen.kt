@@ -39,6 +39,8 @@ import helium314.keyboard.latin.settings.SettingsSubtype.Companion.toSettingsSub
 import helium314.keyboard.latin.utils.Log
 import helium314.keyboard.latin.utils.SubtypeLocaleUtils
 import helium314.keyboard.latin.utils.SubtypeLocaleUtils.displayName
+import helium314.keyboard.latin.pinyin.disablePinyinSubtype
+import helium314.keyboard.latin.pinyin.rowShowsEnabled
 import helium314.keyboard.latin.utils.SubtypeSettings
 import helium314.keyboard.latin.utils.getActivity
 import helium314.keyboard.latin.utils.locale
@@ -79,7 +81,7 @@ fun LanguageScreen(
                     .splitOnWhitespace().any { it.startsWith(term, true) }
             }
         },
-        itemContent = { SubtypeRow(it, it in enabledSubtypes) }
+        itemContent = { SubtypeRow(it, rowShowsEnabled(enabledSubtypes, it)) }
     )
 }
 
@@ -98,9 +100,7 @@ private fun SubtypeRow(subtype: InputMethodSubtype, isEnabled: Boolean) {
         var showNoDictDialog by remember { mutableStateOf(false) }
         Column(modifier = Modifier.weight(1f)) {
             Text(subtype.displayName(), style = MaterialTheme.typography.bodyLarge)
-            val description = if (subtype.getExtraValueOf(ExtraValue.RIME_SCHEMA) != null) {
-                stringResource(R.string.subtype_zh_CN_summary)
-            } else if (SubtypeSettings.isAdditionalSubtype(subtype)) {
+            val description = if (SubtypeSettings.isAdditionalSubtype(subtype)) {
                 val secondaryLocales = subtype.getExtraValueOf(ExtraValue.SECONDARY_LOCALES)?.split(Separators.KV)
                     ?.joinToString(", ") { it.constructLocale().localizedDisplayName(ctx.resources) }
                 stringResource(R.string.custom_subtype) + (secondaryLocales?.let { "\n$it" } ?: "")
@@ -115,10 +115,21 @@ private fun SubtypeRow(subtype: InputMethodSubtype, isEnabled: Boolean) {
         Switch(
             checked = isEnabled,
             onCheckedChange = {
-                if (it && !dictsAvailable(subtype.locale(), ctx))
-                    showNoDictDialog = true
-                if (it) SubtypeSettings.addEnabledSubtype(ctx.prefs(), subtype)
-                else SubtypeSettings.removeEnabledSubtype(ctx, subtype)
+                if (subtype.getExtraValueOf(ExtraValue.RIME_SCHEMA) != null) {
+                    if (it) {
+                        if (!dictsAvailable(subtype.locale(), ctx))
+                            showNoDictDialog = true
+                        SubtypeSettings.addEnabledSubtype(ctx.prefs(), subtype)
+                    } else {
+                        disablePinyinSubtype(ctx.prefs())
+                    }
+                    SubtypeSettings.reloadEnabledSubtypes(ctx)
+                } else {
+                    if (it && !dictsAvailable(subtype.locale(), ctx))
+                        showNoDictDialog = true
+                    if (it) SubtypeSettings.addEnabledSubtype(ctx.prefs(), subtype)
+                    else SubtypeSettings.removeEnabledSubtype(ctx, subtype)
+                }
             }
         )
         if (showNoDictDialog)

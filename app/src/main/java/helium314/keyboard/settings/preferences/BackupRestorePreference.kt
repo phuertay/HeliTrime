@@ -348,4 +348,6 @@ private val backupFilePatterns by lazy { listOf(
     "custom_font".toRegex(),
     "custom_emoji_font".toRegex(),
     "clipboard/.*".toRegex(),
+    // librime user.yaml and userdb. Stock HeliBoard skips zip entries its own patterns do not match.
+    "rime${File.separator}user${File.separator}.*".toRegex(),
 ) }

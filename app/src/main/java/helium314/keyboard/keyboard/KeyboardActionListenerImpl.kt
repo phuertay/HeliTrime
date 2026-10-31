@@ -212,7 +212,6 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
     }
 
     override fun onVerticalSpaceSwipe(steps: Int): Boolean {
-        latinIME.pinyinController?.onVerticalSpaceSwipe(steps)
         return when (Settings.getValues().mSpaceSwipeVertical) {
         KeyboardActionListener.SwipeAction.MOVE_CURSOR -> onMoveCursorVertically(steps)
         KeyboardActionListener.SwipeAction.SWITCH_LANGUAGE -> onLanguageSlide(steps)

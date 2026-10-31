@@ -17,6 +17,8 @@ import helium314.keyboard.latin.utils.ScriptUtils
 import helium314.keyboard.latin.utils.ScriptUtils.script
 import helium314.keyboard.latin.utils.SubtypeLocaleUtils
 import helium314.keyboard.latin.utils.SubtypeSettings
+import helium314.keyboard.latin.pinyin.layoutForPinyin
+import helium314.keyboard.latin.pinyin.primaryLayout
 import helium314.keyboard.latin.utils.locale
 import helium314.keyboard.latin.utils.mainLayoutNameOrQwerty
 import java.util.Locale
@@ -36,7 +38,11 @@ class RichInputMethodSubtype private constructor(val rawSubtype: InputMethodSubt
 
     val isNoLanguage: Boolean get() = SubtypeLocaleUtils.NO_LANGUAGE == locale.language
 
-    val mainLayoutName: String get() = layouts[LayoutType.MAIN] ?: "qwerty"
+    val mainLayoutName: String get() {
+        val stored = layouts[LayoutType.MAIN] ?: "qwerty"
+        if (!hasExtraValue(Constants.Subtype.ExtraValue.RIME_SCHEMA)) return stored
+        return layoutForPinyin(stored, primaryLayout(SubtypeSettings.getEnabledSubtypes()))
+    }
 
     /** layout names for this subtype by LayoutType */
     val layouts = LayoutType.getLayoutMap(getExtraValueOf(KEYBOARD_LAYOUT_SET) ?: "")
