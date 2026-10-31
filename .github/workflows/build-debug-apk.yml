@@ -7,6 +7,7 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +23,10 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # third_party/rime is gitignored. CMake stops without these pins.
+      - name: Fetch librime sources
+        run: bash tools/fetch_rime_sources.bash
+
       - name: Build with Gradle
         run: ./gradlew assembleDebug
 
@@ -30,6 +35,7 @@ jobs:
         with:
           name: HeliBoard-debug
           path: app/build/outputs/apk/debug/*-debug*.apk
+          if-no-files-found: error
 
       - name: Archive reports for failed job
         uses: actions/upload-artifact@v4
