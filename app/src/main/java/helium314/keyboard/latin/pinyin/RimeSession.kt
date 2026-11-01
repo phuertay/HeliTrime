@@ -66,8 +66,6 @@ class RimeSession(private val appContext: Context) : RimeClient {
                     failed = true
                     throw IllegalStateException("session")
                 }
-                RimeJni.nativeSetOption(session, "zh_hans", true)
-                RimeJni.nativeSetOption(session, "simplification", true)
             }
         }
     }

@@ -282,7 +282,7 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
 }
 
 @Suppress("UNCHECKED_CAST") // it is checked... but whatever (except string set, because can't check for that))
-private fun settingsToJsonStream(settings: Map<String?, Any?>, out: OutputStream) {
+internal fun settingsToJsonStream(settings: Map<String?, Any?>, out: OutputStream) {
     val booleans = settings.filter { it.key is String && it.value is Boolean } as Map<String, Boolean>
     val ints = settings.filter { it.key is String && it.value is Int } as Map<String, Int>
     val longs = settings.filter { it.key is String && it.value is Long } as Map<String, Long>
@@ -304,7 +304,7 @@ private fun settingsToJsonStream(settings: Map<String?, Any?>, out: OutputStream
     out.write(Json.encodeToString(stringSets).toByteArray())
 }
 
-private fun readJsonLinesToSettings(list: List<String>, prefs: SharedPreferences): Boolean {
+internal fun readJsonLinesToSettings(list: List<String>, prefs: SharedPreferences): Boolean {
     val i = list.iterator()
     val e = prefs.edit()
     try {
@@ -339,15 +339,21 @@ private fun restoreEntryToDir(zip: ZipInputStream, baseDir: File, entryName: Str
 private const val PREFS_FILE_NAME = "preferences.json"
 private const val PROTECTED_PREFS_FILE_NAME = "protected_preferences.json"
 
-private val backupFilePatterns by lazy { listOf(
-    "blacklists${File.separator}.*\\.txt".toRegex(),
-    "layouts${File.separator}.*${LayoutUtilsCustom.CUSTOM_LAYOUT_PREFIX}+\\..{0,4}".toRegex(), // can't expect a period at the end, as this would break restoring older backups
-    "dicts${File.separator}.*${File.separator}.*user\\.dict".toRegex(),
-    "UserHistoryDictionary.*${File.separator}UserHistoryDictionary.*\\.(body|header)".toRegex(),
+/** Stock HeliBoard zip patterns. Paths and zip names use `/`. A HeliTrime backup must still match these. */
+internal val heliboardFilePatterns = listOf(
+    "blacklists/.*\\.txt".toRegex(),
+    "layouts/.*${LayoutUtilsCustom.CUSTOM_LAYOUT_PREFIX}+\\..{0,4}".toRegex(), // can't expect a period at the end, as this would break restoring older backups
+    "dicts/.*/.*user\\.dict".toRegex(),
+    "UserHistoryDictionary.*/UserHistoryDictionary.*\\.(body|header)".toRegex(),
     "custom_background_image.*".toRegex(),
     "custom_font".toRegex(),
     "custom_emoji_font".toRegex(),
     "clipboard/.*".toRegex(),
-    // librime user.yaml and userdb. Stock HeliBoard skips zip entries its own patterns do not match.
-    "rime${File.separator}user${File.separator}.*".toRegex(),
-) }
+)
+
+/** Extra zip paths. Zip names use `/`. Stock HeliBoard skips a name that matches none of [heliboardFilePatterns]. */
+internal val pinyinBackupFilePatterns = listOf(
+    "rime/user/.*".toRegex(),
+)
+
+private val backupFilePatterns by lazy { heliboardFilePatterns + pinyinBackupFilePatterns }
