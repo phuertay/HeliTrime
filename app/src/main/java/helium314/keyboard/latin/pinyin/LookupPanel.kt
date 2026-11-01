@@ -64,8 +64,11 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         scrollGrid.isFocusableInTouchMode = false
         grid.orientation = VERTICAL
         scrollGrid.addView(grid)
-        addView(scrollGrid, LayoutParams(LayoutParams.MATCH_PARENT, 0, 2f))
-        addView(ink, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        val body = LinearLayout(context)
+        body.orientation = HORIZONTAL
+        body.addView(scrollGrid, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+        body.addView(ink, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+        addView(body, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         buttons.orientation = HORIZONTAL
         buttons.gravity = Gravity.CENTER_VERTICAL
         // ponytail: Samsung draws the IME switcher over the bottom-left of the IME and reports no inset. Reserve that corner. Upgrade: drop the fixed dp if the platform starts reporting the switcher.
@@ -108,7 +111,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
 
     private fun bindGrid() {
         grid.removeAllViews()
-        val columns = 8
+        val columns = if (model.pad) 4 else 8
         var row: LinearLayout? = null
         model.rows.forEachIndexed { index, item ->
             if (index % columns == 0) {
