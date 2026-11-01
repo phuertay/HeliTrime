@@ -49,6 +49,26 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
 
+// Prebuilt librime_jni.so is linked to c++_shared. The cmake early-return
+// builds no native target, so AGP does not package the STL on its own.
+val copyPrebuiltRimeStl = tasks.register("copyPrebuiltRimeStl") {
+    val jniDir = file("src/main/jniLibs/arm64-v8a")
+    val sdkDir = rootProject.file("local.properties").readLines()
+        .first { it.startsWith("sdk.dir=") }.substringAfter("=")
+    val ndkDir = file(sdkDir).resolve("ndk/${android.ndkVersion}")
+    onlyIf {
+        jniDir.resolve("librime_jni.so").isFile && !jniDir.resolve("libc++_shared.so").isFile
+    }
+    doLast {
+        val host = ndkDir.resolve("toolchains/llvm/prebuilt").listFiles()?.firstOrNull { it.isDirectory }
+            ?: error("NDK prebuilt host missing under $ndkDir")
+        val stl = host.resolve("sysroot/usr/lib/aarch64-linux-android/libc++_shared.so")
+        check(stl.isFile) { "missing $stl" }
+        stl.copyTo(jniDir.resolve("libc++_shared.so"))
+    }
+}
+tasks.named("preBuild").configure { dependsOn(copyPrebuiltRimeStl) }
+
 fun rimeDepsDir(): String {
     val candidates = listOf(
         rootProject.file("third_party/rime"),

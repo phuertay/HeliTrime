@@ -22,7 +22,8 @@ if(NOT RIME_DEPS_DIR)
 endif()
 if(NOT EXISTS "${RIME_DEPS_DIR}/librime/CMakeLists.txt")
   # ponytail: no librime tree on this machine. AGP still packages
-  # src/main/jniLibs/${ANDROID_ABI}. Fetch sources to compile instead.
+  # src/main/jniLibs/${ANDROID_ABI}. That .so needs libc++_shared.so beside it
+  # (see copyPrebuiltRimeStl). Fetch sources to compile instead.
   if(EXISTS "${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/librime_jni.so")
     message(STATUS "librime sources missing; packaging prebuilt jniLibs/${ANDROID_ABI}")
     return()
