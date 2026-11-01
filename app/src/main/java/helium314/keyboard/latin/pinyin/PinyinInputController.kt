@@ -33,6 +33,11 @@ class PinyinInputController(
         if (keepSession && ready && !incognitoChanged && !failed) {
             asciiLocked = forceAscii
             if (forceAscii && !asciiMode) lockAscii()
+            val saved = script.read()
+            if (saved != simplified) {
+                applyScript(saved)
+                publishMode()
+            }
             return
         }
         asciiLocked = forceAscii
@@ -208,7 +213,6 @@ class PinyinInputController(
 
     private fun applySnapshot() {
         val snapshot = client.readSnapshot()
-        if (snapshot.asciiMode) asciiMode = true
         if (snapshot.commit.isNotEmpty()) {
             editor.commitText(snapshot.commit)
             hasPreedit = false
@@ -260,10 +264,10 @@ class PinyinInputController(
     private fun applyScript(simplifiedNow: Boolean) {
         simplified = simplifiedNow
         client.setOption("zh_hans", simplifiedNow)
-        client.setOption("simplification", simplifiedNow)
-        client.setOption("zh_hant", false)
+        client.setOption("zh_hant", !simplifiedNow)
         client.setOption("zh_hant_hk", false)
         client.setOption("zh_hant_tw", false)
+        client.setOption("ascii_mode", asciiMode)
     }
 
     private fun publishMode() {

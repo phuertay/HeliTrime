@@ -127,10 +127,14 @@ class PinyinInputControllerTest {
         controller.onEvent('n'.code, 0, false)
         assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
         assertFalse(client.getOption("zh_hans"))
+        assertTrue(client.getOption("zh_hant"))
         assertFalse(client.getOption("zh_hant_hk"))
+        assertFalse(client.getOption("ascii_mode"))
         assertEquals("n", editor.composing)
         assertEquals("", editor.committed)
         assertEquals("中文·繁", PinyinSpaceLabel.text)
+        assertTrue(controller.onEvent('i'.code, 0, false))
+        assertEquals("ni", editor.composing)
 
         val next = FakeRimeClient()
         controller(next, FakeEditor(), store).onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
@@ -155,6 +159,21 @@ class PinyinInputControllerTest {
         assertEquals("英文", PinyinSpaceLabel.text)
         controller.onEndSpaceSwipe()
         controller.onVerticalSpaceSwipe(1)
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
+    }
+
+    @Test
+    fun keptSessionReappliesARestoredScript() {
+        val store = MemoryScriptStore(true)
+        val client = FakeRimeClient()
+        val controller = controller(client, FakeEditor(), store)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertTrue(client.getOption("zh_hans"))
+        store.value = false
+        controller.onStartInput(keepSession = true, forceAscii = false, incognitoNow = false)
+        assertFalse(client.getOption("zh_hans"))
+        assertTrue(client.getOption("zh_hant"))
+        assertFalse(client.getOption("ascii_mode"))
         assertEquals("中文·繁", PinyinSpaceLabel.text)
     }
 
@@ -281,7 +300,12 @@ private class FakeRimeClient : RimeClient {
     override fun changePage(backward: Boolean) = false
     override fun commitComposition(): Boolean = selectCandidate(0)
     override fun clearComposition() { raw = "" }
-    override fun setOption(option: String, value: Boolean) { options[option] = value }
+    override fun setOption(option: String, value: Boolean) {
+        options[option] = value
+        val scriptOn = options["zh_hans"] == true || options["zh_hant"] == true
+            || options["zh_hant_hk"] == true || options["zh_hant_tw"] == true
+        if (option.startsWith("zh_") && !scriptOn) options["ascii_mode"] = true
+    }
     override fun getOption(option: String) = options[option] == true
     override fun shutdown() { session = false }
 

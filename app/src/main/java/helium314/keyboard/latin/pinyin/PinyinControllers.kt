@@ -66,10 +66,17 @@ class MemoryScriptStore(var value: Boolean = true) : PinyinScriptStore {
     override fun save(simplified: Boolean) { value = simplified }
 }
 
+/**
+ * Boolean inside the preference dump HeliBoard already backs up.
+ * Stock restore stores the key and never reads it. A missing key is simplified.
+ */
+const val PREF_PINYIN_SIMPLIFIED = "pinyin_simplified"
+
 private class PrefScriptStore(private val prefs: SharedPreferences) : PinyinScriptStore {
-    override fun read() = prefs.getBoolean(KEY, true)
-    override fun save(simplified: Boolean) { prefs.edit().putBoolean(KEY, simplified).apply() }
-    private companion object { const val KEY = "pinyin_simplified" }
+    override fun read() = prefs.getBoolean(PREF_PINYIN_SIMPLIFIED, true)
+    override fun save(simplified: Boolean) {
+        prefs.edit().putBoolean(PREF_PINYIN_SIMPLIFIED, simplified).apply()
+    }
 }
 
 fun editorForcesAscii(inputType: Int): Boolean {
