@@ -132,9 +132,15 @@ private fun assignStrokes(ink: IntArray, model: IntArray): Int {
 }
 
 private fun strokeSimilarity(left: Int, right: Int): Int {
-    val direction = directionDistance(left and 7, right and 7)
+    val turn = directionDistance(left and 7, right and 7)
+    // ponytail: exact reverse (系's top stroke drawn left-to-right) is distance 4.
+    // Charge one bucket, and skip the start quadrant, which flips with the reversal.
+    // 90° stays full price so 一 and 丨 still split. Upgrade: match the stroke axis.
+    val reversed = turn == 4
+    val direction = if (reversed) 1 else turn
     val length = abs(((left shr 3) and 3) - ((right shr 3) and 3))
-    val quadrant = if (((left shr 5) and 3) == ((right shr 5) and 3)) 0 else 1
+    val sameStart = ((left shr 5) and 3) == ((right shr 5) and 3)
+    val quadrant = if (sameStart || reversed) 0 else 1
     val cell = cellDistance((left shr 7) and 15, (right shr 7) and 15)
     return 40 - direction * 6 - length * 3 - quadrant * 4 - cell * 4
 }

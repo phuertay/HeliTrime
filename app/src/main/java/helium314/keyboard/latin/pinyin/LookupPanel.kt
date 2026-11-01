@@ -36,9 +36,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     var listener: LookupListener? = null
     private val chips = LinearLayout(context)
     private val grid = LinearLayout(context)
-    private val hits = LinearLayout(context)
     private val scrollGrid: ScrollView
-    private val scrollHits: HorizontalScrollView
     private val ink = InkView(context)
     private val buttons = LinearLayout(context)
     private var model = LookupModel(emptyList(), emptyList(), 0, false, false, true, false, emptyList())
@@ -47,24 +45,25 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         tag = TAG
         orientation = VERTICAL
         isClickable = true
+        // A focused child finishes the IME before the click can commit the character.
+        isFocusable = false
+        isFocusableInTouchMode = false
+        descendantFocusability = FOCUS_BLOCK_DESCENDANTS
         applyTheme()
         val scrollChips = HorizontalScrollView(context)
         scrollChips.isHorizontalScrollBarEnabled = false
+        scrollChips.isFocusable = false
+        scrollChips.isFocusableInTouchMode = false
         chips.orientation = HORIZONTAL
         scrollChips.addView(chips)
         addView(scrollChips, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        scrollHits = HorizontalScrollView(context)
-        scrollHits.isHorizontalScrollBarEnabled = false
-        hits.orientation = HORIZONTAL
-        hits.gravity = Gravity.CENTER_VERTICAL
-        scrollHits.addView(hits)
-        scrollHits.visibility = GONE
-        addView(scrollHits, LayoutParams(LayoutParams.MATCH_PARENT, dp(52)))
         scrollGrid = ScrollView(context)
+        scrollGrid.isFocusable = false
+        scrollGrid.isFocusableInTouchMode = false
         grid.orientation = VERTICAL
         scrollGrid.addView(grid)
-        addView(scrollGrid, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
-        addView(ink, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1.4f))
+        addView(scrollGrid, LayoutParams(LayoutParams.MATCH_PARENT, 0, 2f))
+        addView(ink, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         buttons.orientation = HORIZONTAL
         buttons.gravity = Gravity.CENTER_VERTICAL
         // ponytail: Samsung draws the IME switcher over the bottom-left of the IME and reports no inset. Reserve that corner. Upgrade: drop the fixed dp if the platform starts reporting the switcher.
@@ -82,8 +81,6 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         bindGrid()
         ink.strokes = next.strokes
         ink.visibility = if (next.pad) VISIBLE else GONE
-        scrollHits.visibility = if (next.pad) VISIBLE else GONE
-        scrollGrid.visibility = if (next.pad) GONE else VISIBLE
         bindButtons()
     }
 
@@ -109,19 +106,6 @@ class LookupPanel(context: Context) : LinearLayout(context) {
 
     private fun bindGrid() {
         grid.removeAllViews()
-        hits.removeAllViews()
-        if (model.pad) {
-            for (item in model.rows) {
-                val cell = text(item.text, 22f)
-                cell.gravity = Gravity.CENTER
-                cell.setPadding(dp(8), 0, dp(8), 0)
-                cell.background = face(ColorType.KEY_BACKGROUND)
-                cell.layoutParams = LayoutParams(dp(44), dp(48)).apply { marginEnd = dp(4) }
-                cell.setOnClickListener { listener?.onPick(item) }
-                hits.addView(cell)
-            }
-            return
-        }
         val columns = 8
         var row: LinearLayout? = null
         model.rows.forEachIndexed { index, item ->
@@ -138,6 +122,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             }
             cell.setOnClickListener { listener?.onPick(item) }
             row!!.addView(cell)
+        }
+        val remainder = model.rows.size % columns
+        if (remainder != 0 && row != null) {
+            repeat(columns - remainder) {
+                row!!.addView(View(context), LayoutParams(0, dp(44), 1f))
+            }
         }
     }
 
@@ -181,6 +171,8 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         val view = TextView(context)
         view.text = label
         view.gravity = Gravity.CENTER
+        view.isFocusable = false
+        view.isFocusableInTouchMode = false
         view.setTextColor(Settings.getValues().mColors.get(ColorType.KEY_TEXT))
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
         return view
