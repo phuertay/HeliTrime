@@ -12,6 +12,8 @@ interface PinyinUi {
     fun showCandidates(snapshot: RimeSnapshot)
     fun showNeutral()
     fun onModeChanged(label: String)
+    fun showLookup(model: LookupModel) {}
+    fun hideLookup() {}
 }
 
 fun interface PinyinStarter {

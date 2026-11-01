@@ -20,7 +20,9 @@ import android.os.Debug;
 import android.os.Message;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
+import android.widget.FrameLayout;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InlineSuggestion;
@@ -123,6 +125,7 @@ public class LatinIME extends InputMethodService implements
     private final DictionaryFacilitator mOriginalDictionaryFacilitator = mDictionaryFacilitator;
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
     private PinyinInputController mPinyinController;
+    private helium314.keyboard.latin.pinyin.LookupPanel mLookupPanel;
 
     public PinyinInputController getPinyinController() {
         return mPinyinController;
@@ -135,6 +138,18 @@ public class LatinIME extends InputMethodService implements
     public void pinyinInvalidateKeyboard() {
         final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
         if (view != null) view.invalidateAllKeys();
+    }
+
+    @Nullable
+    public helium314.keyboard.latin.pinyin.LookupPanel pinyinLookupPanel() {
+        if (mLookupPanel != null) return mLookupPanel;
+        final View wrapper = mKeyboardSwitcher.getWrapperView();
+        if (!(wrapper instanceof ViewGroup)) return null;
+        mLookupPanel = new helium314.keyboard.latin.pinyin.LookupPanel(this);
+        mLookupPanel.setVisibility(View.GONE);
+        ((ViewGroup) wrapper).addView(mLookupPanel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return mLookupPanel;
     }
 
     public boolean pinyinSymbolsLayer() {
@@ -150,6 +165,7 @@ public class LatinIME extends InputMethodService implements
             if (mPinyinController != null) {
                 mPinyinController.onLeaveSubtype();
                 mPinyinController = null;
+                refreshRimeLookupButton(false);
             }
             return;
         }
@@ -164,6 +180,11 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void onRimePage(final boolean backward) {
         if (mPinyinController != null) mPinyinController.onPage(backward);
+    }
+
+    @Override
+    public void onRimeLookup() {
+        if (mPinyinController != null) mPinyinController.onOpenLookup();
     }
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
@@ -1498,6 +1519,7 @@ public class LatinIME extends InputMethodService implements
                 || noSuggestionsFromDictionaries) {
             mSuggestionStripView.setSuggestions(suggestedWords,
                     mRichImm.getCurrentSubtype().isRtlSubtype());
+            refreshRimeLookupButton(helium314.keyboard.latin.pinyin.RimeCandidateRow.INSTANCE.isRime(suggestedWords));
             // Auto hide the toolbar if dictionary suggestions are available
             if (currentSettingsValues.mAutoHideToolbar && !noSuggestionsFromDictionaries) {
                 mSuggestionStripView.setToolbarVisibility(false);
@@ -1568,6 +1590,7 @@ public class LatinIME extends InputMethodService implements
             // clipboard suggestion has been set
             if (hasSuggestionStripView() && currentSettings.mAutoHideToolbar)
                 mSuggestionStripView.setToolbarVisibility(false);
+            refreshRimeLookupButton(false);
             return;
         }
         final SuggestedWords neutralSuggestions = currentSettings.mSuggestPunctuation
@@ -1582,6 +1605,12 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(true);
             }
         }
+    }
+
+    private void refreshRimeLookupButton(final boolean rimeRow) {
+        if (!hasSuggestionStripView()) return;
+        final boolean show = mPinyinController != null && mPinyinController.lookupAvailable() && !rimeRow;
+        mSuggestionStripView.setRimeLookupButton(show);
     }
 
     @Override
