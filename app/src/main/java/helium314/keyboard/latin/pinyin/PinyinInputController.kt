@@ -15,9 +15,11 @@ class PinyinInputController(
     private val failureText: String,
     private val starter: PinyinStarter,
     private val deliver: (block: () -> Unit) -> Unit,
+    private val script: PinyinScriptStore = MemoryScriptStore(),
 ) {
     private var asciiMode = false
     private var asciiLocked = false
+    private var simplified = true
     private var incognito = false
     private var ready = false
     private var preparing = false
@@ -63,6 +65,7 @@ class PinyinInputController(
                     ui.showFailure(failureText)
                     PinyinSpaceLabel.text = "英文"
                 } else {
+                    applyScript(script.read())
                     publishMode()
                     flushPending()
                 }
@@ -88,6 +91,7 @@ class PinyinInputController(
 
     /** @return true when the key was consumed */
     fun onEvent(codePoint: Int, keyCode: Int, symbolsLayer: Boolean): Boolean {
+        if (keyCode == KeyCode.RIME_SCRIPT) return onScriptToggle()
         if (failed) return false
         if (preparing || !ready) {
             if (!wouldConsume(codePoint, keyCode, symbolsLayer)) return false
@@ -239,8 +243,31 @@ class PinyinInputController(
         publishMode()
     }
 
+    private fun onScriptToggle(): Boolean {
+        if (failed || asciiLocked) return true
+        if (preparing || !ready) {
+            script.save(!script.read())
+            return true
+        }
+        val next = !simplified
+        script.save(next)
+        applyScript(next)
+        if (asciiMode) publishMode() else applySnapshot()
+        return true
+    }
+
+    /** Dict is traditional. `zh_hans` runs OpenCC t2s, so true is simplified. */
+    private fun applyScript(simplifiedNow: Boolean) {
+        simplified = simplifiedNow
+        client.setOption("zh_hans", simplifiedNow)
+        client.setOption("simplification", simplifiedNow)
+        client.setOption("zh_hant", false)
+        client.setOption("zh_hant_hk", false)
+        client.setOption("zh_hant_tw", false)
+    }
+
     private fun publishMode() {
-        val label = if (asciiMode) "英文" else "中文"
+        val label = if (asciiMode) "英文" else if (simplified) "中文·简" else "中文·繁"
         PinyinSpaceLabel.text = label
         ui.onModeChanged(label)
     }

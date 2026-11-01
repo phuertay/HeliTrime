@@ -1,7 +1,10 @@
 package helium314.keyboard.latin.pinyin
 
+import android.text.InputType
 import helium314.keyboard.ShadowInputMethodManager2
+import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.KeyboardElement
+import helium314.keyboard.keyboard.internal.KeyboardCodesSet
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
 import helium314.keyboard.latin.SuggestedWords
 import helium314.keyboard.latin.SuggestedWords.SuggestedWordInfo
@@ -105,6 +108,57 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun commaScriptToggleFlipsSimplifiedAndTheNextSessionKeepsIt() {
+        assertEquals(KeyCode.RIME_SCRIPT, KeyboardCodesSet.getCode("key_rime_script"))
+        assertTrue(commaOffersScriptToggle(true, InputType.TYPE_CLASS_TEXT))
+        assertFalse(commaOffersScriptToggle(false, InputType.TYPE_CLASS_TEXT))
+        assertFalse(commaOffersScriptToggle(true, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        assertFalse(commaOffersScriptToggle(true, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD))
+        assertFalse(commaOffersScriptToggle(true, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS))
+        assertFalse(commaOffersScriptToggle(true, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI))
+
+        val store = MemoryScriptStore()
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor, store)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertTrue(client.getOption("zh_hans"))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
+        controller.onEvent('n'.code, 0, false)
+        assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
+        assertFalse(client.getOption("zh_hans"))
+        assertFalse(client.getOption("zh_hant_hk"))
+        assertEquals("n", editor.composing)
+        assertEquals("", editor.committed)
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
+
+        val next = FakeRimeClient()
+        controller(next, FakeEditor(), store).onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertFalse(next.getOption("zh_hans"))
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
+    }
+
+    @Test
+    fun lockedAsciiAndEnglishModeKeepTheScriptKeyFromInserting() {
+        val lockedClient = FakeRimeClient()
+        val locked = controller(lockedClient, FakeEditor(), MemoryScriptStore())
+        locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
+        assertTrue(locked.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
+        assertTrue(lockedClient.getOption("zh_hans"))
+
+        val client = FakeRimeClient()
+        val controller = controller(client, FakeEditor(), MemoryScriptStore())
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onVerticalSpaceSwipe(1)
+        assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
+        assertFalse(client.getOption("zh_hans"))
+        assertEquals("英文", PinyinSpaceLabel.text)
+        controller.onEndSpaceSwipe()
+        controller.onVerticalSpaceSwipe(1)
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
+    }
+
+    @Test
     fun latinStripIsNotARimeMenuAndATapSelectsThePinyinIndex() {
         val latin = SuggestedWords(
             ArrayList(listOf(latinInfo("the"), latinInfo("then"), latinInfo("they"))),
@@ -129,7 +183,11 @@ class PinyinInputControllerTest {
         assertEquals(1, picked)
     }
 
-    private fun controller(client: FakeRimeClient, editor: FakeEditor): PinyinInputController {
+    private fun controller(
+        client: FakeRimeClient,
+        editor: FakeEditor,
+        script: PinyinScriptStore = MemoryScriptStore(),
+    ): PinyinInputController {
         return PinyinInputController(
             client = client,
             editor = editor,
@@ -144,6 +202,7 @@ class PinyinInputControllerTest {
             failureText = "Pinyin failed to load",
             starter = PinyinStarter { it() },
             deliver = { it() },
+            script = script,
         )
     }
 
