@@ -152,6 +152,8 @@ class KeyboardWrapperView @JvmOverloads constructor(
         val scale = Settings.getValues().mKeyboardHeightScale
         // scale one-handed mode button height if keyboard height scale is < 80%
         val heightScale = if (scale < 0.8f) scale + 0.2f else 1f
+        val lookup = findViewWithTag<View>(helium314.keyboard.latin.pinyin.LookupPanel.TAG)
+        lookup?.layout(0, 0, width, keyboardView.measuredHeight)
         val buttonsLeft = if (isLeftGravity) keyboardView.measuredWidth else 0
         val buttonXLeft = buttonsLeft + (spareWidth - stopOneHandedModeBtn.measuredWidth) / 2
         val buttonXRight = buttonsLeft + (spareWidth + stopOneHandedModeBtn.measuredWidth) / 2

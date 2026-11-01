@@ -23,6 +23,9 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(shadows = [ShadowInputMethodManager2::class])
 class PinyinInputControllerTest {
+    private var lookupRows: List<LookupRow> = emptyList()
+    private var lookupPad = false
+
     @Test
     fun numpadIsNotSentToRime() {
         assertTrue(keyboardIsSymbols(KeyboardElement.NUMPAD))
@@ -202,10 +205,63 @@ class PinyinInputControllerTest {
         assertEquals(1, picked)
     }
 
+    @Test
+    fun emptyLookupOpensThePadAndASpellingStaysOnTheGrid() {
+        val bare = controller(FakeRimeClient(), FakeEditor())
+        bare.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        bare.onOpenLookup()
+        assertTrue(lookupPad)
+
+        val spelled = controller(FakeRimeClient(), FakeEditor())
+        spelled.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        spelled.onEvent('n'.code, 0, false)
+        spelled.onOpenLookup()
+        assertFalse(lookupPad)
+    }
+
+    @Test
+    fun padSpaceStaysPutAndAnOutsideCharacterDropsTheSpelling() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor, hanzi = object : HanziIndex {
+            override fun radical(codePoint: Int) = 0
+            override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) =
+                pool.filter { it == '人'.code }.toList()
+            override fun common() = intArrayOf('人'.code)
+            override fun radicalLabel(radical: Int, simplified: Boolean) = ""
+        })
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('n'.code, 0, false)
+        controller.onOpenLookup()
+        controller.onOpenPad()
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 8f, 8f))
+        assertTrue(controller.onEvent(' '.code, 0, false))
+        assertEquals("n", editor.composing)
+        assertEquals("", editor.committed)
+        controller.onEvent(0, KeyCode.DELETE, false)
+        assertEquals(listOf("n"), lookupRows.map { it.text })
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 8f, 8f))
+        controller.onWidenLookup()
+        controller.onLookupPick(lookupRows.first { it.text == "人" })
+        assertEquals("人", editor.committed)
+        assertEquals("", editor.composing)
+    }
+
+    @Test
+    fun englishAndPasswordHideTheLookup() {
+        val locked = controller(FakeRimeClient(), FakeEditor())
+        locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
+        assertFalse(locked.lookupAvailable())
+        locked.onOpenLookup()
+        locked.onOpenPad()
+        assertFalse(locked.onEvent(' '.code, 0, false))
+    }
+
     private fun controller(
         client: FakeRimeClient,
         editor: FakeEditor,
         script: PinyinScriptStore = MemoryScriptStore(),
+        hanzi: HanziIndex = EmptyHanzi,
     ): PinyinInputController {
         return PinyinInputController(
             client = client,
@@ -216,12 +272,17 @@ class PinyinInputControllerTest {
                 override fun showCandidates(snapshot: RimeSnapshot) {}
                 override fun showNeutral() {}
                 override fun onModeChanged(label: String) {}
+                override fun showLookup(model: LookupModel) {
+                    lookupRows = model.rows
+                    lookupPad = model.pad
+                }
             },
             preparingText = "Preparing pinyin",
             failureText = "Pinyin failed to load",
             starter = PinyinStarter { it() },
             deliver = { it() },
             script = script,
+            hanzi = hanzi,
         )
     }
 

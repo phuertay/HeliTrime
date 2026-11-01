@@ -83,10 +83,12 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         fun removeExternalSuggestions()
         fun onSwipeDownOnToolbar()
         fun onRimePage(backward: Boolean)
+        fun onRimeLookup()
     }
 
     private val moreSuggestionsContainer: View
     private val wordViews = ArrayList<TextView>()
+    private var rimeLookupButton: TextView? = null
     private val debugInfoViews = ArrayList<TextView>()
     private val dividerViews = ArrayList<View>()
 
@@ -248,6 +250,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         setRtl(isRtlLanguage)
         suggestedWords = suggestions
         if (RimeCandidateRow.isRime(suggestions)) {
+            setRimeLookupButton(false)
             toolbarContainer.isVisible = false
             toolbar.isVisible = false
             pinnedKeys.isVisible = false
@@ -255,7 +258,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             suggestionsStrip.isVisible = true
             RimeCandidateRow.bind(suggestionsStrip, suggestions,
                 { listener.pickSuggestionManually(it) },
-                { listener.onRimePage(it) })
+                { listener.onRimePage(it) },
+                { listener.onRimeLookup() })
             isExternalSuggestionVisible = false
             return
         }
@@ -264,6 +268,27 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         )
         isExternalSuggestionVisible = false
         updateKeys()
+    }
+
+    fun setRimeLookupButton(show: Boolean) {
+        if (!show) {
+            rimeLookupButton?.isVisible = false
+            return
+        }
+        val button = rimeLookupButton ?: TextView(context).also { view ->
+            view.text = "查"
+            view.gravity = android.view.Gravity.CENTER
+            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            view.setPadding(12.dpToPx(resources), 0, 12.dpToPx(resources), 0)
+            view.setOnClickListener { listener.onRimeLookup() }
+            val params = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
+            params.addRule(ALIGN_PARENT_END)
+            params.addRule(CENTER_VERTICAL)
+            addView(view, params)
+            rimeLookupButton = view
+        }
+        button.isVisible = true
+        button.bringToFront()
     }
 
     fun setExternalSuggestionView(view: View?, addCloseButton: Boolean) {

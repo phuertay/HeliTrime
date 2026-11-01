@@ -22,6 +22,7 @@ object RimeCandidateRow {
         words: SuggestedWords,
         onPick: (SuggestedWordInfo) -> Unit,
         onPage: (Boolean) -> Unit,
+        onExpand: (() -> Unit)? = null,
     ) {
         val context = parent.context
         val scroll = HorizontalScrollView(context)
@@ -37,6 +38,9 @@ object RimeCandidateRow {
             else row.addView(candidate(context, info, null))
         }
         if (!words.mRimeLastPage) row.addView(pageButton(context, "›") { onPage(false) })
+        if (onExpand != null && (0 until words.size()).any { words.getInfo(it).mCandidateIndex >= 0 }) {
+            row.addView(pageButton(context, "查") { onExpand() })
+        }
         scroll.addView(row, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         parent.addView(scroll, ViewGroup.LayoutParams(

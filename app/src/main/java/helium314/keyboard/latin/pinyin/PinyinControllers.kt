@@ -3,6 +3,7 @@ package helium314.keyboard.latin.pinyin
 import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import helium314.keyboard.keyboard.KeyboardElement
 import helium314.keyboard.latin.LatinIME
 import helium314.keyboard.latin.R
@@ -22,6 +23,7 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
             ime.pinyinConnection().commitText(text, 1)
         }
     }
+    val box = arrayOfNulls<PinyinInputController>(1)
     val ui = object : PinyinUi {
         override fun showPreparing(message: String) {
             ime.setSuggestions(rimeSuggestedWords(message))
@@ -38,9 +40,18 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         override fun onModeChanged(label: String) {
             ime.pinyinInvalidateKeyboard()
         }
+        override fun showLookup(model: LookupModel) {
+            val panel = ime.pinyinLookupPanel() ?: return
+            if (panel.listener == null) panel.listener = ControllerLookup { box[0]!! }
+            panel.setModel(model)
+            panel.visibility = View.VISIBLE
+        }
+        override fun hideLookup() {
+            ime.pinyinLookupPanel()?.visibility = View.GONE
+        }
     }
     val main = Handler(Looper.getMainLooper())
-    return PinyinInputController(
+    val controller = PinyinInputController(
         client = RimeSessionFactory.open(ime.applicationContext),
         editor = editor,
         ui = ui,
@@ -49,7 +60,25 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         starter = PinyinStarter { block -> thread(name = "rime-start", isDaemon = true) { block() } },
         deliver = { block -> main.post(block) },
         script = PrefScriptStore(ime.prefs()),
+        hanzi = HanziTable.open(ime.applicationContext),
     )
+    box[0] = controller
+    return controller
+}
+
+private class ControllerLookup(
+    private val controller: () -> PinyinInputController,
+) : LookupListener {
+    override fun onClose() = controller().onCloseLookup()
+    override fun onPick(row: LookupRow) = controller().onLookupPick(row)
+    override fun onRadical(radical: Int) = controller().onLookupRadical(radical)
+    override fun onDraw() = controller().onOpenPad()
+    override fun onLeavePad() = controller().onLeavePad()
+    override fun onStroke(points: FloatArray) = controller().onLookupStroke(points)
+    override fun onUndo() = controller().onUndoStroke()
+    override fun onClear() = controller().onClearInk()
+    override fun onWiden() = controller().onWidenLookup()
+    override fun onScript() = controller().onLookupScript()
 }
 
 /** Comma long-press offers 简/繁 on a pinyin subtype. Password, email, and URI stay 英文. */

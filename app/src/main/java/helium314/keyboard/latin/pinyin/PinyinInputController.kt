@@ -16,6 +16,7 @@ class PinyinInputController(
     private val starter: PinyinStarter,
     private val deliver: (block: () -> Unit) -> Unit,
     private val script: PinyinScriptStore = MemoryScriptStore(),
+    private val hanzi: HanziIndex = EmptyHanzi,
 ) {
     private var asciiMode = false
     private var asciiLocked = false
@@ -26,6 +27,12 @@ class PinyinInputController(
     private var failed = false
     private var hasPreedit = false
     private var swipeLatched = false
+    private var lookupOpen = false
+    private var padOpen = false
+    private var widened = false
+    private var radical = 0
+    private val ink = ArrayList<FloatArray>()
+    private var menu = emptyList<MenuChar>()
     private val pending = ArrayList<PendingKey>()
 
     fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
@@ -79,6 +86,7 @@ class PinyinInputController(
     }
 
     fun onFinishInput() {
+        closeLookup()
         dropPreedit()
         client.destroySession()
         ready = false
@@ -87,6 +95,7 @@ class PinyinInputController(
     }
 
     fun onLeaveSubtype() {
+        closeLookup()
         dropPreedit()
         client.destroySession()
         ready = false
@@ -97,15 +106,29 @@ class PinyinInputController(
     /** @return true when the key was consumed */
     fun onEvent(codePoint: Int, keyCode: Int, symbolsLayer: Boolean): Boolean {
         if (keyCode == KeyCode.RIME_SCRIPT) return onScriptToggle()
+        if (lookupOpen && (keyCode == KeyCode.EMOJI || keyCode == KeyCode.LANGUAGE_SWITCH
+                || keyCode == KeyCode.SYMBOL)) {
+            closeLookup()
+            return false
+        }
+        if (symbolsLayer && codePoint > 0) {
+            closeLookup()
+            if (ready && !failed) endCompositionAsText()
+            return false
+        }
+        if (padOpen) {
+            if (RimeKeyMapper.isDelete(keyCode)) {
+                onUndoStroke()
+                return true
+            }
+            if (RimeKeyMapper.isEnter(codePoint) || RimeKeyMapper.isSpace(codePoint)) return true
+            return true
+        }
         if (failed) return false
         if (preparing || !ready) {
             if (!wouldConsume(codePoint, keyCode, symbolsLayer)) return false
             pending.add(PendingKey(codePoint, keyCode, symbolsLayer))
             return true
-        }
-        if (symbolsLayer && codePoint > 0) {
-            endCompositionAsText()
-            return false
         }
         if (!wouldConsume(codePoint, keyCode, symbolsLayer)) return false
         if (asciiMode) return false
@@ -156,6 +179,7 @@ class PinyinInputController(
         if (steps <= 0 || swipeLatched || !ready || failed) return
         swipeLatched = true
         if (!asciiMode) {
+            closeLookup()
             endCompositionAsText()
             client.setOption("ascii_mode", true)
             asciiMode = true
@@ -189,6 +213,88 @@ class PinyinInputController(
 
     fun shouldKeepStrip(): Boolean {
         return preparing || failed || (ready && !asciiMode && hasPreedit)
+    }
+
+    fun lookupAvailable(): Boolean {
+        return ready && !failed && !preparing && !asciiMode && !asciiLocked
+    }
+
+    fun onOpenLookup() {
+        if (!lookupAvailable()) return
+        lookupOpen = true
+        widened = false
+        radical = 0
+        ink.clear()
+        menu = if (hasPreedit) collectMenu() else emptyList()
+        padOpen = !hasPreedit
+        publishLookup()
+    }
+
+    fun onCloseLookup() = closeLookup()
+
+    fun onLookupPick(row: LookupRow) {
+        if (!lookupOpen) return
+        if (row.page >= 0) {
+            gotoPage(row.page)
+            client.selectCandidate(row.index)
+            applySnapshot()
+            return
+        }
+        if (hasPreedit) editor.setComposingText("")
+        client.clearComposition()
+        hasPreedit = false
+        editor.commitText(row.text)
+        ui.showNeutral()
+        closeLookup()
+    }
+
+    fun onLookupRadical(code: Int) {
+        if (!lookupOpen) return
+        radical = code
+        publishLookup()
+    }
+
+    fun onOpenPad() {
+        if (!lookupOpen || !lookupAvailable()) return
+        padOpen = true
+        publishLookup()
+    }
+
+    fun onLeavePad() {
+        if (!padOpen) return
+        ink.clear()
+        padOpen = false
+        widened = false
+        publishLookup()
+    }
+
+    fun onLookupStroke(points: FloatArray) {
+        if (!padOpen || points.size < 4) return
+        ink.add(points)
+        publishLookup()
+    }
+
+    fun onUndoStroke() {
+        if (!padOpen) return
+        if (ink.isNotEmpty()) ink.removeAt(ink.lastIndex)
+        publishLookup()
+    }
+
+    fun onClearInk() {
+        if (!padOpen) return
+        ink.clear()
+        widened = false
+        publishLookup()
+    }
+
+    fun onWidenLookup() {
+        if (!padOpen || !hasPreedit) return
+        widened = !widened
+        publishLookup()
+    }
+
+    fun onLookupScript() {
+        if (lookupOpen) onScriptToggle()
     }
 
     fun onIncognitoChanged(incognitoNow: Boolean) {
@@ -227,6 +333,13 @@ class PinyinInputController(
             ui.showNeutral()
         }
         publishMode()
+        if (!lookupOpen) return
+        if (snapshot.commit.isNotEmpty()) {
+            closeLookup()
+        } else {
+            if (hasPreedit) menu = collectMenu()
+            publishLookup()
+        }
     }
 
     private fun endCompositionAsText() {
@@ -268,6 +381,58 @@ class PinyinInputController(
         client.setOption("zh_hant_hk", false)
         client.setOption("zh_hant_tw", false)
         client.setOption("ascii_mode", asciiMode)
+    }
+
+    private fun publishLookup() {
+        ui.showLookup(buildLookup(
+            menu, ink, hanzi, simplified, radical, padOpen, widened, hasPreedit,
+        ))
+    }
+
+    private fun closeLookup() {
+        if (!lookupOpen) return
+        lookupOpen = false
+        padOpen = false
+        widened = false
+        radical = 0
+        ink.clear()
+        menu = emptyList()
+        ui.hideLookup()
+    }
+
+    private fun collectMenu(): List<MenuChar> {
+        val saved = client.readSnapshot().pageNo
+        var guard = 0
+        while (client.readSnapshot().pageNo > 0 && guard++ < 40) {
+            if (!client.changePage(true)) break
+        }
+        val out = ArrayList<MenuChar>()
+        guard = 0
+        while (guard++ < 40) {
+            val snap = client.readSnapshot()
+            snap.candidates.forEachIndexed { index, candidate ->
+                out.add(MenuChar(candidate.text, snap.pageNo, index))
+            }
+            if (snap.isLastPage || !client.changePage(false)) break
+        }
+        guard = 0
+        while (client.readSnapshot().pageNo > saved && guard++ < 40) {
+            if (!client.changePage(true)) break
+        }
+        while (client.readSnapshot().pageNo < saved && guard++ < 40) {
+            if (!client.changePage(false)) break
+        }
+        return out
+    }
+
+    private fun gotoPage(page: Int) {
+        var guard = 0
+        while (client.readSnapshot().pageNo > page && guard++ < 40) {
+            if (!client.changePage(true)) return
+        }
+        while (client.readSnapshot().pageNo < page && guard++ < 40) {
+            if (!client.changePage(false)) return
+        }
     }
 
     private fun publishMode() {
