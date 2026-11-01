@@ -19,6 +19,7 @@ public final class RimeJni {
             return true;
         } catch (UnsatisfiedLinkError error) {
             loadError = error;
+            android.util.Log.e("RimeJni", "librime failed to load", error);
             return false;
         }
     }
