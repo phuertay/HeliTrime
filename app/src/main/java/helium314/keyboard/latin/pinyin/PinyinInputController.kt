@@ -28,6 +28,8 @@ class PinyinInputController(
     private var hasPreedit = false
     private var swipeLatched = false
     private var lookupOpen = false
+    private var passed = false
+    private var committing = false
     private var padOpen = false
     private var widened = false
     private var radical = 0
@@ -86,6 +88,7 @@ class PinyinInputController(
     }
 
     fun onFinishInput() {
+        // The tap already passed the character. Finishing input drops the connection, so committing here never lands.
         closeLookup()
         dropPreedit()
         client.destroySession()
@@ -203,6 +206,7 @@ class PinyinInputController(
      * next letter never shows.
      */
     fun onUpdateSelection(belated: Boolean): Boolean {
+        if (committing) return true
         if (asciiMode || !ready || failed) return false
         if (!hasPreedit || belated) return true
         dropPreedit()
@@ -232,18 +236,14 @@ class PinyinInputController(
 
     fun onCloseLookup() = closeLookup()
 
+    /** Finger-down. The editor is still focused here; the click is not. */
+    fun onLookupPress(row: LookupRow) {
+        pass(row)
+    }
+
     fun onLookupPick(row: LookupRow) {
+        pass(row)
         if (!lookupOpen) return
-        if (row.page >= 0) {
-            gotoPage(row.page)
-            client.selectCandidate(row.index)
-            applySnapshot()
-            return
-        }
-        if (hasPreedit) editor.setComposingText("")
-        client.clearComposition()
-        hasPreedit = false
-        editor.commitText(row.text)
         ui.showNeutral()
         closeLookup()
     }
@@ -317,12 +317,34 @@ class PinyinInputController(
         for (key in queued) onEvent(key.codePoint, key.keyCode, key.symbols)
     }
 
+    /** One character per gesture. A later click or finish must not send it again. */
+    private fun pass(row: LookupRow) {
+        if (!lookupOpen || passed || row.text.isEmpty()) return
+        passed = true
+        val text = if (row.page < 0) row.text else {
+            gotoPage(row.page)
+            client.selectCandidate(row.index)
+            val commit = client.readSnapshot().commit
+            if (commit.isNotEmpty()) commit else row.text
+        }
+        commitPlain(text)
+        client.clearComposition()
+        hasPreedit = false
+    }
+
+    private fun commitPlain(text: String) {
+        committing = true
+        hasPreedit = false
+        try {
+            editor.commitText(text)
+        } finally {
+            committing = false
+        }
+    }
+
     private fun applySnapshot() {
         val snapshot = client.readSnapshot()
-        if (snapshot.commit.isNotEmpty()) {
-            editor.commitText(snapshot.commit)
-            hasPreedit = false
-        }
+        if (snapshot.commit.isNotEmpty()) commitPlain(snapshot.commit)
         if (!asciiMode && snapshot.preedit.isNotEmpty()) {
             editor.setComposingText(snapshot.preedit)
             hasPreedit = true
@@ -390,6 +412,7 @@ class PinyinInputController(
     }
 
     private fun closeLookup() {
+        passed = false
         if (!lookupOpen) return
         lookupOpen = false
         padOpen = false

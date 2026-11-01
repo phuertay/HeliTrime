@@ -16,9 +16,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import helium314.keyboard.latin.common.ColorType
 import helium314.keyboard.latin.settings.Settings
+import kotlin.math.abs
 
 interface LookupListener {
     fun onClose()
+    fun onPress(row: LookupRow)
     fun onPick(row: LookupRow)
     fun onRadical(radical: Int)
     fun onDraw()
@@ -120,7 +122,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             cell.layoutParams = LayoutParams(0, dp(44), 1f).apply {
                 setMargins(dp(2), dp(2), dp(2), dp(2))
             }
-            cell.setOnClickListener { listener?.onPick(item) }
+            pickTarget(cell, item)
             row!!.addView(cell)
         }
         val remainder = model.rows.size % columns
@@ -142,6 +144,36 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             button("⌨", { listener?.onLeavePad() })
         }
         button("×", { listener?.onClose() })
+    }
+
+    /** The editor is still focused on finger-down. The click is too late: the field is gone. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun pickTarget(view: View, row: LookupRow) {
+        val slop = dp(12).toFloat()
+        var downX = 0f
+        var downY = 0f
+        var moved = false
+        view.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    moved = false
+                    listener?.onPress(row)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!moved && (abs(event.x - downX) > slop || abs(event.y - downY) > slop)) {
+                        moved = true
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    val near = abs(event.x - downX) <= slop && abs(event.y - downY) <= slop
+                    if (!moved && near) listener?.onPick(row)
+                }
+                MotionEvent.ACTION_CANCEL -> listener?.onPick(row)
+            }
+            true
+        }
     }
 
     private fun button(label: String, onClick: () -> Unit) {

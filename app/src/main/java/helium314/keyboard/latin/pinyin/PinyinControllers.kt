@@ -20,7 +20,8 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
             ime.pinyinConnection().finishComposingText()
         }
         override fun commitText(text: String) {
-            ime.pinyinConnection().commitText(text, 1)
+            if (text.isEmpty()) return
+            ime.commitPinyinText(text)
         }
     }
     val box = arrayOfNulls<PinyinInputController>(1)
@@ -70,6 +71,7 @@ private class ControllerLookup(
     private val controller: () -> PinyinInputController,
 ) : LookupListener {
     override fun onClose() = controller().onCloseLookup()
+    override fun onPress(row: LookupRow) = controller().onLookupPress(row)
     override fun onPick(row: LookupRow) = controller().onLookupPick(row)
     override fun onRadical(radical: Int) = controller().onLookupRadical(radical)
     override fun onDraw() = controller().onOpenPad()

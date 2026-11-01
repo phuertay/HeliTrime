@@ -248,6 +248,29 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun pressCommitsBeforeTheFieldLosesFocus() {
+        val editor = FakeEditor()
+        val controller = controller(FakeRimeClient(), editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onOpenLookup()
+        controller.onLookupPress(LookupRow("人", -1, -1))
+        controller.onFinishInput()
+        assertEquals("人", editor.committed)
+    }
+
+    @Test
+    fun aCancelledClickDoesNotCommitTwice() {
+        val editor = FakeEditor()
+        val controller = controller(FakeRimeClient(), editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onOpenLookup()
+        controller.onLookupPress(LookupRow("人", -1, -1))
+        controller.onLookupPick(LookupRow("人", -1, -1))
+        controller.onFinishInput()
+        assertEquals("人", editor.committed)
+    }
+
+    @Test
     fun englishAndPasswordHideTheLookup() {
         val locked = controller(FakeRimeClient(), FakeEditor())
         locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
