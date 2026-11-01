@@ -9,6 +9,7 @@ import android.util.AttributeSet
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.View.MeasureSpec
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import helium314.keyboard.keyboard.KeyboardActionListener
@@ -127,6 +128,22 @@ class KeyboardWrapperView @JvmOverloads constructor(
                 Constants.NOT_A_COORDINATE, Constants.NOT_A_COORDINATE,
                 false /* isKeyRepeat */)
         }
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        val lookup = findViewWithTag<View>(helium314.keyboard.latin.pinyin.LookupPanel.TAG) ?: return
+        if (lookup.visibility == View.GONE) return
+        // The wrapper is wrap_content. A match_parent panel otherwise measures to the full
+        // IME window, covers the editor, and the tap finishes the input connection.
+        val keyboardView = KeyboardSwitcher.getInstance().visibleKeyboardView ?: return
+        val keyboardHeight = keyboardView.measuredHeight
+        if (keyboardHeight <= 0) return
+        lookup.measure(
+            MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(keyboardHeight, MeasureSpec.EXACTLY),
+        )
+        setMeasuredDimension(measuredWidth, keyboardHeight)
     }
 
     @SuppressLint("RtlHardcoded")

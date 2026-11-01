@@ -1449,6 +1449,25 @@ public class LatinIME extends InputMethodService implements
         mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
     }
 
+    /**
+     * Lookup tap. Same path as a popup key. By the click the editor has lost focus, so this
+     * runs on finger-down. If that connection is already gone, the one held from the last key
+     * still accepts the character.
+     */
+    public void commitPinyinText(final String rawText) {
+        if (rawText == null || rawText.isEmpty()) return;
+        if (getCurrentInputConnection() != null) {
+            final Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
+            final InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
+                    event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
+            updateStateAfterInputTransaction(completeInputTransaction);
+            return;
+        }
+        if (mInputLogic.mConnection.isConnected()) {
+            mInputLogic.mConnection.commitText(rawText, 1);
+        }
+    }
+
     public void onStartBatchInput() {
         if (mPinyinController != null && mPinyinController.onStartBatchInput()) return;
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
