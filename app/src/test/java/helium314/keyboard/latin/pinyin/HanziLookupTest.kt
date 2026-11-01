@@ -12,6 +12,19 @@ class HanziLookupTest {
     }
 
     @Test
+    fun reversedFlatStrokeStaysNearTheModel() {
+        val model = inkFeatures(listOf(floatArrayOf(90f, 10f, 10f, 16f)))
+        val reversed = inkFeatures(listOf(floatArrayOf(10f, 16f, 90f, 10f)))
+        val down = inkFeatures(listOf(floatArrayOf(50f, 0f, 50f, 80f)))
+        assertEquals(4, model[0] and 7)
+        assertEquals(0, reversed[0] and 7)
+        val exact = matchScore(model, model)
+        val flipped = matchScore(reversed, model)
+        assertTrue(exact - flipped <= 8, "exact=$exact flipped=$flipped")
+        assertTrue(flipped > matchScore(down, model))
+    }
+
+    @Test
     fun oneMissingStrokeStillMatches() {
         val model = intArrayOf(1, 2, 3)
         assertTrue(matchScore(intArrayOf(1, 2), model) != Int.MIN_VALUE)
