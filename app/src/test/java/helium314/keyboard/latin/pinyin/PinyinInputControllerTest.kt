@@ -90,6 +90,32 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun switchingToEnglishKeepsTheSpelling() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        editor.onFinished = { controller.onUpdateSelection(belated = false) }
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('j'.code, 0, false)
+        controller.onEvent('i'.code, 0, false)
+        controller.onVerticalSpaceSwipe(1)
+        assertEquals("ji", editor.finishedText)
+        assertFalse(editor.wipedAfterFinish)
+        assertTrue(client.getOption("ascii_mode"))
+
+        val globeClient = FakeRimeClient()
+        val globeEditor = FakeEditor()
+        val globe = controller(globeClient, globeEditor)
+        globeEditor.onFinished = { globe.onUpdateSelection(belated = false) }
+        globe.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        globe.onEvent('j'.code, 0, false)
+        globe.onEvent('i'.code, 0, false)
+        globe.onLeaveSubtype()
+        assertEquals("ji", globeEditor.finishedText)
+        assertFalse(globeEditor.wipedAfterFinish)
+    }
+
+    @Test
     fun upwardStepDoesNotToggle() {
         val client = FakeRimeClient()
         val controller = controller(client, FakeEditor())
@@ -368,8 +394,11 @@ private class FakeEditor : PinyinEditor {
     var committed = ""
     var finished = false
     var finishedText = ""
+    var wipedAfterFinish = false
+    var onFinished: (() -> Unit)? = null
 
     override fun setComposingText(text: String) {
+        if (finished && text.isEmpty()) wipedAfterFinish = true
         composing = text
     }
 
@@ -377,6 +406,7 @@ private class FakeEditor : PinyinEditor {
         finished = true
         finishedText = composing
         composing = ""
+        onFinished?.invoke()
     }
 
     override fun commitText(text: String) {
