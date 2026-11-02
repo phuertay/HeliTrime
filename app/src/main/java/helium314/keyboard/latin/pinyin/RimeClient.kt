@@ -13,6 +13,12 @@ interface RimeClient {
     fun processKey(keysym: Int, mask: Int): Boolean
     fun selectCandidate(index: Int): Boolean
     fun changePage(backward: Boolean): Boolean
+    fun readMenu(): List<MenuChar> = walkPages(read = { readSnapshot() }, change = { changePage(it) })
+    fun selectOnPage(page: Int, index: Int): String {
+        if (!seekPage(page, read = { readSnapshot() }, change = { changePage(it) })) return ""
+        if (!selectCandidate(index)) return ""
+        return readSnapshot().commit
+    }
     fun commitComposition(): Boolean
     fun clearComposition()
     fun setOption(option: String, value: Boolean)

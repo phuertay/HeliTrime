@@ -6,6 +6,64 @@ import kotlin.test.assertTrue
 
 class HanziLookupTest {
     @Test
+    fun walkPagesReachesTheLastPageAndRestoresTheStrip() {
+        val pages = (0 until 45).map { page ->
+            listOf(RimeCandidate(if (page == 44) "系" else "字$page", ""))
+        }
+        var page = 10
+        val menu = walkPages(
+            read = {
+                RimeSnapshot(
+                    pageNo = page,
+                    isLastPage = page == pages.lastIndex,
+                    candidates = pages[page],
+                )
+            },
+            change = { backward ->
+                val next = if (backward) page - 1 else page + 1
+                if (next !in pages.indices) false else {
+                    page = next
+                    true
+                }
+            },
+        )
+        assertEquals(45, menu.size)
+        assertEquals("系", menu.last().text)
+        assertEquals(44, menu.last().page)
+        assertEquals(10, page)
+    }
+
+    @Test
+    fun radicalsSortByCountThenStrokeCount() {
+        val hanzi = object : HanziIndex {
+            override fun radical(codePoint: Int) = when (codePoint) {
+                '人'.code -> '人'.code
+                '系'.code, '紧'.code -> '糸'.code
+                '木'.code -> '木'.code
+                else -> 0
+            }
+            override fun strokeCount(codePoint: Int) = when (codePoint) {
+                '人'.code -> 2
+                '木'.code -> 4
+                '糸'.code -> 6
+                else -> 0
+            }
+            override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) = emptyList<Int>()
+            override fun common() = IntArray(0)
+            override fun radicalLabel(radical: Int, simplified: Boolean) = Character.toString(radical)
+        }
+        val menu = listOf(
+            MenuChar("人", 0, 0),
+            MenuChar("木", 0, 1),
+            MenuChar("系", 0, 2),
+            MenuChar("紧", 0, 3),
+            MenuChar("人", 1, 0),
+        )
+        val model = buildLookup(menu, emptyList(), hanzi, true, 0, false, false, true)
+        assertEquals(listOf("人", "糸", "木"), model.radicals.map { it.second })
+    }
+
+    @Test
     fun horizontalStrokePointsEast() {
         val feature = inkFeatures(listOf(floatArrayOf(0f, 10f, 80f, 10f)))
         assertEquals(0, feature[0] and 7)
@@ -102,6 +160,7 @@ class HanziLookupTest {
 
 private object OnlyJi : HanziIndex {
     override fun radical(codePoint: Int) = 0
+    override fun strokeCount(codePoint: Int) = 0
     override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) =
         pool.filter { it == '机'.code }.toList()
     override fun common() = intArrayOf('机'.code, '系'.code)
@@ -110,6 +169,7 @@ private object OnlyJi : HanziIndex {
 
 private object TinyHanzi : HanziIndex {
     override fun radical(codePoint: Int) = if (codePoint == '语'.code) '言'.code else 0
+    override fun strokeCount(codePoint: Int) = 0
     override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int): List<Int> {
         return pool.filter { radical == 0 || it == '语'.code }.toList()
     }

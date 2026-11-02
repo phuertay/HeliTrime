@@ -36,6 +36,7 @@ class PinyinInputController(
     private val ink = ArrayList<FloatArray>()
     private var menu = emptyList<MenuChar>()
     private var menuFor: String? = null
+    private var menuGeneration = 0
     private val pending = ArrayList<PendingKey>()
 
     fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
@@ -325,9 +326,7 @@ class PinyinInputController(
         if (!lookupOpen || passed || row.text.isEmpty()) return
         passed = true
         val text = if (row.page < 0) row.text else {
-            gotoPage(row.page)
-            client.selectCandidate(row.index)
-            val commit = client.readSnapshot().commit
+            val commit = client.selectOnPage(row.page, row.index)
             if (commit.isNotEmpty()) commit else row.text
         }
         commitPlain(text)
@@ -446,50 +445,31 @@ class PinyinInputController(
         ui.hideLookup()
     }
 
+    /**
+     * The page walk stays off the UI thread. A loop of page hops there drops the input connection.
+     * A second 查 for the same spelling reuses [menu].
+     */
     private fun ensureMenu(preedit: String) {
-        if (menu.isNotEmpty() && menuFor == preedit) return
-        menu = collectMenu()
+        if (menuFor == preedit) return
         menuFor = preedit
+        menu = emptyList()
+        val generation = ++menuGeneration
+        starter.start {
+            val collected = client.readMenu()
+            deliver {
+                if (generation != menuGeneration) return@deliver
+                if (client.readSnapshot().preedit != preedit) return@deliver
+                menu = collected
+                menuFor = preedit
+                if (lookupOpen) publishLookup()
+            }
+        }
     }
 
     private fun dropMenu() {
+        menuGeneration++
         menu = emptyList()
         menuFor = null
-    }
-
-    private fun collectMenu(): List<MenuChar> {
-        val saved = client.readSnapshot().pageNo
-        var guard = 0
-        while (client.readSnapshot().pageNo > 0 && guard++ < 40) {
-            if (!client.changePage(true)) break
-        }
-        val out = ArrayList<MenuChar>()
-        guard = 0
-        while (guard++ < 40) {
-            val snap = client.readSnapshot()
-            snap.candidates.forEachIndexed { index, candidate ->
-                out.add(MenuChar(candidate.text, snap.pageNo, index))
-            }
-            if (snap.isLastPage || !client.changePage(false)) break
-        }
-        guard = 0
-        while (client.readSnapshot().pageNo > saved && guard++ < 40) {
-            if (!client.changePage(true)) break
-        }
-        while (client.readSnapshot().pageNo < saved && guard++ < 40) {
-            if (!client.changePage(false)) break
-        }
-        return out
-    }
-
-    private fun gotoPage(page: Int) {
-        var guard = 0
-        while (client.readSnapshot().pageNo > page && guard++ < 40) {
-            if (!client.changePage(true)) return
-        }
-        while (client.readSnapshot().pageNo < page && guard++ < 40) {
-            if (!client.changePage(false)) return
-        }
     }
 
     private fun publishMode() {

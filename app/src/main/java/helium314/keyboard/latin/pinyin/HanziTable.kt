@@ -7,6 +7,7 @@ import java.nio.ByteOrder
 /** Stroke table distilled from Make Me a Hanzi. Tests use a fake. */
 interface HanziIndex {
     fun radical(codePoint: Int): Int
+    fun strokeCount(codePoint: Int): Int
     fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int): List<Int>
     fun common(): IntArray
     fun radicalLabel(radical: Int, simplified: Boolean): String
@@ -14,6 +15,7 @@ interface HanziIndex {
 
 object EmptyHanzi : HanziIndex {
     override fun radical(codePoint: Int) = 0
+    override fun strokeCount(codePoint: Int) = 0
     override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) = emptyList<Int>()
     override fun common() = IntArray(0)
     override fun radicalLabel(radical: Int, simplified: Boolean) = ""
@@ -31,6 +33,11 @@ class HanziTable private constructor(
     override fun radical(codePoint: Int): Int {
         val index = indexOf(codePoint)
         return if (index < 0) 0 else radicals[index]
+    }
+
+    override fun strokeCount(codePoint: Int): Int {
+        val index = indexOf(codePoint)
+        return if (index < 0) 0 else strokeLen[index]
     }
 
     override fun common(): IntArray = codes
