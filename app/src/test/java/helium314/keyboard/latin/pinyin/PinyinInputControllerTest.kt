@@ -226,6 +226,7 @@ class PinyinInputControllerTest {
         val editor = FakeEditor()
         val controller = controller(client, editor, hanzi = object : HanziIndex {
             override fun radical(codePoint: Int) = 0
+            override fun strokeCount(codePoint: Int) = 0
             override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) =
                 pool.filter { it == '人'.code }.toList()
             override fun common() = intArrayOf('人'.code)
@@ -269,6 +270,28 @@ class PinyinInputControllerTest {
         controller.onLookupPick(LookupRow("人", -1, -1))
         controller.onFinishInput()
         assertEquals("人", editor.committed)
+    }
+
+    @Test
+    fun lookupKeepsACharacterPastPageForty() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        client.pages = List(45) { page ->
+            listOf(RimeCandidate(if (page == 44) "系" else "字$page", ""))
+        }
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('j'.code, 0, false)
+        controller.onEvent('i'.code, 0, false)
+        controller.onOpenLookup()
+        val row = lookupRows.first { it.text == "系" }
+        assertEquals(44, row.page)
+        val after = client.snapshots
+        controller.onCloseLookup()
+        controller.onOpenLookup()
+        assertEquals(after + 1, client.snapshots)
+        controller.onLookupPress(row)
+        assertEquals("系", editor.committed)
     }
 
     @Test
@@ -365,6 +388,8 @@ private class FakeEditor : PinyinEditor {
 private class FakeRimeClient : RimeClient {
     override var failed: Boolean = false
     var snapshots = 0
+    var pages: List<List<RimeCandidate>>? = null
+    private var page = 0
     private var session = false
     private val options = HashMap<String, Boolean>()
     private var raw = ""
@@ -396,14 +421,20 @@ private class FakeRimeClient : RimeClient {
     }
 
     override fun selectCandidate(index: Int): Boolean {
-        val list = candidates()
+        val list = currentCandidates()
         if (index !in list.indices) return false
         commit = list[index].text
         raw = ""
         return true
     }
 
-    override fun changePage(backward: Boolean) = false
+    override fun changePage(backward: Boolean): Boolean {
+        val list = pages ?: return false
+        val next = if (backward) page - 1 else page + 1
+        if (next !in list.indices) return false
+        page = next
+        return true
+    }
     override fun commitComposition(): Boolean = selectCandidate(0)
     override fun clearComposition() { raw = "" }
     override fun setOption(option: String, value: Boolean) {
@@ -419,15 +450,22 @@ private class FakeRimeClient : RimeClient {
         snapshots += 1
         val text = commit
         commit = ""
+        val list = currentCandidates()
         return RimeSnapshot(
             commit = text,
             preedit = raw,
             cursor = raw.length,
-            isLastPage = true,
+            pageNo = if (pages != null) page else 0,
+            isLastPage = pages == null || page == pages!!.lastIndex,
             asciiMode = getOption("ascii_mode"),
             composing = raw.isNotEmpty(),
-            candidates = candidates(),
+            candidates = list,
         )
+    }
+
+    private fun currentCandidates(): List<RimeCandidate> {
+        pages?.let { return it[page] }
+        return candidates()
     }
 
     private fun candidates(): List<RimeCandidate> {

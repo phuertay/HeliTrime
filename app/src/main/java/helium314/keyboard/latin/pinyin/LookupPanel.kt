@@ -38,8 +38,15 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     var listener: LookupListener? = null
     private val chips = LinearLayout(context)
     private val grid = LinearLayout(context)
-    private val scrollGrid: ScrollView
+    private val scrollGrid = object : ScrollView(context) {
+        override fun onScrollChanged(left: Int, top: Int, oldLeft: Int, oldTop: Int) {
+            super.onScrollChanged(left, top, oldLeft, oldTop)
+            if (top != oldTop) onGridScrolled(top)
+        }
+    }
     private val ink = InkView(context)
+    private var gridOrigin = 0
+    private var bindingGrid = false
     private val buttons = LinearLayout(context)
     private var model = LookupModel(emptyList(), emptyList(), 0, false, false, true, false, emptyList())
 
@@ -59,7 +66,6 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         chips.orientation = HORIZONTAL
         scrollChips.addView(chips)
         addView(scrollChips, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        scrollGrid = ScrollView(context)
         scrollGrid.isFocusable = false
         scrollGrid.isFocusableInTouchMode = false
         grid.orientation = VERTICAL
@@ -80,7 +86,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     }
 
     fun setModel(next: LookupModel) {
+        val sameGrid = next.rows == model.rows && next.pad == model.pad
         model = next
+        if (!sameGrid) {
+            gridOrigin = 0
+            scrollGrid.scrollTo(0, 0)
+        }
         applyTheme()
         bindChips()
         bindGrid()
@@ -109,31 +120,65 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         chips.visibility = if (model.radicals.isEmpty()) GONE else VISIBLE
     }
 
-    private fun bindGrid() {
-        grid.removeAllViews()
+    private fun onGridScrolled(y: Int) {
+        if (bindingGrid) return
+        val rowHeight = dp(GRID_ROW_DP)
+        if (rowHeight <= 0) return
         val columns = if (model.pad) 4 else 8
-        var row: LinearLayout? = null
-        model.rows.forEachIndexed { index, item ->
-            if (index % columns == 0) {
-                row = LinearLayout(context)
-                row!!.orientation = HORIZONTAL
-                grid.addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        val rowCount = if (model.rows.isEmpty()) 0 else (model.rows.size + columns - 1) / columns
+        val origin = (y / rowHeight - 4).coerceIn(0, (rowCount - GRID_WINDOW_ROWS).coerceAtLeast(0))
+        if (origin == gridOrigin) return
+        gridOrigin = origin
+        bindGrid()
+    }
+
+    /** Draws a window of rows. Spacers keep the scroll range equal to the whole menu. */
+    private fun bindGrid() {
+        bindingGrid = true
+        try {
+            val keep = scrollGrid.scrollY
+            grid.removeAllViews()
+            val columns = if (model.pad) 4 else 8
+            val rows = model.rows
+            if (rows.isEmpty()) return
+            val rowCount = (rows.size + columns - 1) / columns
+            val rowHeight = dp(GRID_ROW_DP)
+            val start = gridOrigin.coerceIn(0, (rowCount - GRID_WINDOW_ROWS).coerceAtLeast(0))
+            val end = (start + GRID_WINDOW_ROWS).coerceAtMost(rowCount)
+            gridOrigin = start
+            if (start > 0) grid.addView(spacer(start * rowHeight))
+            for (rowIndex in start until end) {
+                val line = LinearLayout(context)
+                line.orientation = HORIZONTAL
+                grid.addView(line, LayoutParams(LayoutParams.MATCH_PARENT, rowHeight))
+                val from = rowIndex * columns
+                val to = minOf(from + columns, rows.size)
+                for (index in from until to) {
+                    val cell = text(rows[index].text, 20f)
+                    cell.gravity = Gravity.CENTER
+                    cell.background = face(ColorType.KEY_BACKGROUND)
+                    cell.layoutParams = LayoutParams(0, dp(44), 1f).apply {
+                        setMargins(dp(2), dp(2), dp(2), dp(2))
+                    }
+                    pickTarget(cell, rows[index])
+                    line.addView(cell)
+                }
+                repeat(columns - (to - from)) {
+                    line.addView(View(context), LayoutParams(0, dp(44), 1f))
+                }
             }
-            val cell = text(item.text, 20f)
-            cell.gravity = Gravity.CENTER
-            cell.background = face(ColorType.KEY_BACKGROUND)
-            cell.layoutParams = LayoutParams(0, dp(44), 1f).apply {
-                setMargins(dp(2), dp(2), dp(2), dp(2))
-            }
-            pickTarget(cell, item)
-            row!!.addView(cell)
+            val tail = rowCount - end
+            if (tail > 0) grid.addView(spacer(tail * rowHeight))
+            scrollGrid.scrollTo(0, keep)
+        } finally {
+            bindingGrid = false
         }
-        val remainder = model.rows.size % columns
-        if (remainder != 0 && row != null) {
-            repeat(columns - remainder) {
-                row!!.addView(View(context), LayoutParams(0, dp(44), 1f))
-            }
-        }
+    }
+
+    private fun spacer(height: Int): View {
+        val view = View(context)
+        view.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, height)
+        return view
     }
 
     private fun bindButtons() {
@@ -300,5 +345,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     companion object {
         const val TAG = "hanzi_lookup"
         private const val SWITCHER_CLEARANCE_DP = 56
+        private const val GRID_ROW_DP = 48
+        private const val GRID_WINDOW_ROWS = 18
     }
 }

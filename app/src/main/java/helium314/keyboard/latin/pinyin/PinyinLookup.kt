@@ -2,6 +2,41 @@ package helium314.keyboard.latin.pinyin
 
 data class MenuChar(val text: String, val page: Int, val index: Int)
 
+/** Stop when the page does not move. A stuck page ends the walk; a count does not. */
+internal fun seekPage(target: Int, read: () -> RimeSnapshot, change: (Boolean) -> Boolean): Boolean {
+    fun step(backward: Boolean, more: (Int) -> Boolean): Boolean {
+        while (more(read().pageNo)) {
+            val before = read().pageNo
+            if (!change(backward)) return false
+            val now = read().pageNo
+            val stuck = if (backward) now >= before else now <= before
+            if (stuck) return false
+        }
+        return true
+    }
+    if (!step(true) { it > target }) return false
+    if (!step(false) { it < target }) return false
+    return read().pageNo == target
+}
+
+internal fun walkPages(read: () -> RimeSnapshot, change: (Boolean) -> Boolean): List<MenuChar> {
+    val saved = read().pageNo
+    seekPage(0, read, change)
+    val out = ArrayList<MenuChar>()
+    while (true) {
+        val snap = read()
+        snap.candidates.forEachIndexed { index, candidate ->
+            out.add(MenuChar(candidate.text, snap.pageNo, index))
+        }
+        if (snap.isLastPage) break
+        val before = snap.pageNo
+        if (!change(false)) break
+        if (read().pageNo <= before) break
+    }
+    seekPage(saved, read, change)
+    return out
+}
+
 data class LookupRow(val text: String, val page: Int, val index: Int)
 
 data class LookupModel(
@@ -26,10 +61,16 @@ fun buildLookup(
     hasSpelling: Boolean,
 ): LookupModel {
     val singles = menu.filter { it.text.codePointCount(0, it.text.length) == 1 }
-    val radicals = singles.map { hanzi.radical(it.text.codePointAt(0)) }
-        .filter { it != 0 }
-        .distinct()
-        .map { it to hanzi.radicalLabel(it, simplified) }
+    val counts = LinkedHashMap<Int, Int>()
+    for (item in singles) {
+        val code = hanzi.radical(item.text.codePointAt(0))
+        if (code != 0) counts[code] = (counts[code] ?: 0) + 1
+    }
+    val radicals = counts.entries.sortedWith(
+        compareByDescending<Map.Entry<Int, Int>> { it.value }
+            .thenBy { hanzi.strokeCount(it.key).let { strokes -> if (strokes == 0) Int.MAX_VALUE else strokes } }
+            .thenBy { it.key },
+    ).map { it.key to hanzi.radicalLabel(it.key, simplified) }
     val features = inkFeatures(ink)
     val rows = if (features.isEmpty()) {
         val shown = if (radical == 0) menu else singles.filter {

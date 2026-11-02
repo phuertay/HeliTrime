@@ -93,6 +93,21 @@ class RimeSession(private val appContext: Context) : RimeClient {
         session != 0L && RimeJni.nativeChangePage(session, backward)
     }
 
+    override fun readMenu(): List<MenuChar> = call {
+        walkPages(read = { snapshotOnThread() }, change = { back ->
+            session != 0L && RimeJni.nativeChangePage(session, back)
+        })
+    }
+
+    override fun selectOnPage(page: Int, index: Int): String = call {
+        if (session == 0L || !RimeJni.load()) return@call ""
+        if (!seekPage(page, read = { snapshotOnThread() }, change = { back ->
+                RimeJni.nativeChangePage(session, back)
+            })) return@call ""
+        if (!RimeJni.nativeSelectCandidate(session, index)) return@call ""
+        snapshotOnThread().commit
+    }
+
     override fun commitComposition(): Boolean = call {
         session != 0L && RimeJni.nativeCommitComposition(session)
     }
@@ -109,9 +124,11 @@ class RimeSession(private val appContext: Context) : RimeClient {
         session != 0L && RimeJni.load() && RimeJni.nativeGetOption(session, option)
     }
 
-    override fun readSnapshot(): RimeSnapshot = call {
-        if (session == 0L || !RimeJni.load()) return@call RimeSnapshot()
-        parseSnapshot(RimeJni.nativeReadSnapshot(session))
+    override fun readSnapshot(): RimeSnapshot = call { snapshotOnThread() }
+
+    private fun snapshotOnThread(): RimeSnapshot {
+        if (session == 0L || !RimeJni.load()) return RimeSnapshot()
+        return parseSnapshot(RimeJni.nativeReadSnapshot(session))
     }
 
     override fun shutdown() = call {
