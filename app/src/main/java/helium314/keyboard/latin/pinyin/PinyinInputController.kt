@@ -35,6 +35,7 @@ class PinyinInputController(
     private var radical = 0
     private val ink = ArrayList<FloatArray>()
     private var menu = emptyList<MenuChar>()
+    private var menuFor: String? = null
     private val pending = ArrayList<PendingKey>()
 
     fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
@@ -53,6 +54,7 @@ class PinyinInputController(
         incognito = incognitoNow
         preparing = true
         ready = false
+        dropMenu()
         ui.showPreparing(preparingText)
         starter.start {
             var ok = false
@@ -81,6 +83,7 @@ class PinyinInputController(
                 } else {
                     applyScript(script.read())
                     publishMode()
+                    publishStrip()
                     flushPending()
                 }
             }
@@ -229,7 +232,7 @@ class PinyinInputController(
         widened = false
         radical = 0
         ink.clear()
-        menu = if (hasPreedit) collectMenu() else emptyList()
+        if (hasPreedit) ensureMenu(client.readSnapshot().preedit) else dropMenu()
         padOpen = !hasPreedit
         publishLookup()
     }
@@ -355,12 +358,30 @@ class PinyinInputController(
             ui.showNeutral()
         }
         publishMode()
+        if (menuFor != snapshot.preedit) dropMenu()
         if (!lookupOpen) return
         if (snapshot.commit.isNotEmpty()) {
             closeLookup()
         } else {
-            if (hasPreedit) menu = collectMenu()
+            if (hasPreedit) ensureMenu(snapshot.preedit)
             publishLookup()
+        }
+    }
+
+    /** Preparing is only for the load. Once the engine is up, the strip is candidates or neutral, and neutral shows 查. */
+    private fun publishStrip() {
+        if (asciiMode) {
+            hasPreedit = false
+            ui.showNeutral()
+            return
+        }
+        val snapshot = client.readSnapshot()
+        if (snapshot.preedit.isNotEmpty()) {
+            hasPreedit = true
+            ui.showCandidates(snapshot)
+        } else {
+            hasPreedit = false
+            ui.showNeutral()
         }
     }
 
@@ -368,12 +389,14 @@ class PinyinInputController(
         if (hasPreedit) editor.finishComposingText()
         client.clearComposition()
         hasPreedit = false
+        dropMenu()
     }
 
     private fun dropPreedit() {
         if (hasPreedit) editor.setComposingText("")
         client.clearComposition()
         hasPreedit = false
+        dropMenu()
     }
 
     private fun lockAscii() {
@@ -403,6 +426,7 @@ class PinyinInputController(
         client.setOption("zh_hant_hk", false)
         client.setOption("zh_hant_tw", false)
         client.setOption("ascii_mode", asciiMode)
+        dropMenu()
     }
 
     private fun publishLookup() {
@@ -419,8 +443,18 @@ class PinyinInputController(
         widened = false
         radical = 0
         ink.clear()
-        menu = emptyList()
         ui.hideLookup()
+    }
+
+    private fun ensureMenu(preedit: String) {
+        if (menu.isNotEmpty() && menuFor == preedit) return
+        menu = collectMenu()
+        menuFor = preedit
+    }
+
+    private fun dropMenu() {
+        menu = emptyList()
+        menuFor = null
     }
 
     private fun collectMenu(): List<MenuChar> {
