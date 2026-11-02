@@ -5,7 +5,13 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.TextPaint
+import android.text.style.MetricAffectingSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -14,6 +20,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.File
 import helium314.keyboard.latin.common.ColorType
 import helium314.keyboard.latin.settings.Settings
 import kotlin.math.abs
@@ -38,15 +45,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     var listener: LookupListener? = null
     private val chips = LinearLayout(context)
     private val grid = LinearLayout(context)
-    private val scrollGrid = object : ScrollView(context) {
-        override fun onScrollChanged(left: Int, top: Int, oldLeft: Int, oldTop: Int) {
-            super.onScrollChanged(left, top, oldLeft, oldTop)
-            if (top != oldTop) onGridScrolled(top)
-        }
-    }
+    private val scrollGrid = ScrollView(context)
     private val ink = InkView(context)
-    private var gridOrigin = 0
-    private var bindingGrid = false
+    private val fileFaces = loadSystemCjkFaces()
+    private val extensionFace = loadExtensionFace(context)
+    private val glyphPaint = Paint().apply { textSize = 64f }
+    private val faceByCode = HashMap<Int, Typeface>()
     private val buttons = LinearLayout(context)
     private var model = LookupModel(emptyList(), emptyList(), 0, false, false, true, false, emptyList())
 
@@ -66,6 +70,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         chips.orientation = HORIZONTAL
         scrollChips.addView(chips)
         addView(scrollChips, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        buttons.orientation = HORIZONTAL
+        buttons.gravity = Gravity.CENTER_VERTICAL or Gravity.END
+        // Top end, not the bottom-left. Samsung draws its IME switcher there and eats the taps.
+        addView(buttons, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            marginEnd = dp(4)
+        })
         scrollGrid.isFocusable = false
         scrollGrid.isFocusableInTouchMode = false
         grid.orientation = VERTICAL
@@ -75,23 +85,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         body.addView(scrollGrid, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
         body.addView(ink, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
         addView(body, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
-        buttons.orientation = HORIZONTAL
-        buttons.gravity = Gravity.CENTER_VERTICAL
-        // ponytail: Samsung draws the IME switcher over the bottom-left of the IME and reports no inset. Reserve that corner. Upgrade: drop the fixed dp if the platform starts reporting the switcher.
-        addView(buttons, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = dp(SWITCHER_CLEARANCE_DP)
-            marginStart = dp(SWITCHER_CLEARANCE_DP)
-            marginEnd = dp(4)
-        })
     }
 
     fun setModel(next: LookupModel) {
         val sameGrid = next.rows == model.rows && next.pad == model.pad
         model = next
-        if (!sameGrid) {
-            gridOrigin = 0
-            scrollGrid.scrollTo(0, 0)
-        }
+        if (!sameGrid) scrollGrid.scrollTo(0, 0)
         applyTheme()
         bindChips()
         bindGrid()
@@ -120,65 +119,35 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         chips.visibility = if (model.radicals.isEmpty()) GONE else VISIBLE
     }
 
-    private fun onGridScrolled(y: Int) {
-        if (bindingGrid) return
-        val rowHeight = dp(GRID_ROW_DP)
-        if (rowHeight <= 0) return
-        val columns = if (model.pad) 4 else 8
-        val rowCount = if (model.rows.isEmpty()) 0 else (model.rows.size + columns - 1) / columns
-        val origin = (y / rowHeight - 4).coerceIn(0, (rowCount - GRID_WINDOW_ROWS).coerceAtLeast(0))
-        if (origin == gridOrigin) return
-        gridOrigin = origin
-        bindGrid()
-    }
-
-    /** Draws a window of rows. Spacers keep the scroll range equal to the whole menu. */
+    /** Every candidate. A window of rows rebuilt during the drag ate the scroll. */
     private fun bindGrid() {
-        bindingGrid = true
-        try {
-            val keep = scrollGrid.scrollY
-            grid.removeAllViews()
-            val columns = if (model.pad) 4 else 8
-            val rows = model.rows
-            if (rows.isEmpty()) return
-            val rowCount = (rows.size + columns - 1) / columns
-            val rowHeight = dp(GRID_ROW_DP)
-            val start = gridOrigin.coerceIn(0, (rowCount - GRID_WINDOW_ROWS).coerceAtLeast(0))
-            val end = (start + GRID_WINDOW_ROWS).coerceAtMost(rowCount)
-            gridOrigin = start
-            if (start > 0) grid.addView(spacer(start * rowHeight))
-            for (rowIndex in start until end) {
-                val line = LinearLayout(context)
-                line.orientation = HORIZONTAL
-                grid.addView(line, LayoutParams(LayoutParams.MATCH_PARENT, rowHeight))
-                val from = rowIndex * columns
-                val to = minOf(from + columns, rows.size)
-                for (index in from until to) {
-                    val cell = text(rows[index].text, 20f)
-                    cell.gravity = Gravity.CENTER
-                    cell.background = face(ColorType.KEY_BACKGROUND)
-                    cell.layoutParams = LayoutParams(0, dp(44), 1f).apply {
-                        setMargins(dp(2), dp(2), dp(2), dp(2))
-                    }
-                    pickTarget(cell, rows[index])
-                    line.addView(cell)
-                }
-                repeat(columns - (to - from)) {
-                    line.addView(View(context), LayoutParams(0, dp(44), 1f))
+        grid.removeAllViews()
+        val columns = if (model.pad) 4 else 8
+        val rows = model.rows
+        if (rows.isEmpty()) return
+        var line: LinearLayout? = null
+        rows.forEachIndexed { index, item ->
+            if (index % columns == 0) {
+                line = LinearLayout(context).also {
+                    it.orientation = HORIZONTAL
+                    grid.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
                 }
             }
-            val tail = rowCount - end
-            if (tail > 0) grid.addView(spacer(tail * rowHeight))
-            scrollGrid.scrollTo(0, keep)
-        } finally {
-            bindingGrid = false
+            val cell = text(item.text, 20f)
+            cell.gravity = Gravity.CENTER
+            cell.background = face(ColorType.KEY_BACKGROUND)
+            cell.layoutParams = LayoutParams(0, dp(44), 1f).apply {
+                setMargins(dp(2), dp(2), dp(2), dp(2))
+            }
+            pickTarget(cell, item)
+            line!!.addView(cell)
         }
-    }
-
-    private fun spacer(height: Int): View {
-        val view = View(context)
-        view.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, height)
-        return view
+        val remainder = rows.size % columns
+        if (remainder != 0 && line != null) {
+            repeat(columns - remainder) {
+                line!!.addView(View(context), LayoutParams(0, dp(44), 1f))
+            }
+        }
     }
 
     private fun bindButtons() {
@@ -194,7 +163,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         button("×", { listener?.onClose() })
     }
 
-    /** The editor is still focused on finger-down. The click is too late: the field is gone. */
+    /** A drag scrolls. A tap selects. Finger-down used to commit, so the list could not move. */
     @SuppressLint("ClickableViewAccessibility")
     private fun pickTarget(view: View, row: LookupRow) {
         val slop = dp(12).toFloat()
@@ -207,7 +176,6 @@ class LookupPanel(context: Context) : LinearLayout(context) {
                     downX = event.x
                     downY = event.y
                     moved = false
-                    listener?.onPress(row)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!moved && (abs(event.x - downX) > slop || abs(event.y - downY) > slop)) {
@@ -218,12 +186,13 @@ class LookupPanel(context: Context) : LinearLayout(context) {
                     val near = abs(event.x - downX) <= slop && abs(event.y - downY) <= slop
                     if (!moved && near) listener?.onPick(row)
                 }
-                MotionEvent.ACTION_CANCEL -> listener?.onPick(row)
             }
-            true
+            !moved
         }
     }
 
+    /** Finger-down. A click is too late: the press rebuilds this row, or the editor has already dropped the connection. */
+    @SuppressLint("ClickableViewAccessibility")
     private fun button(label: String, onClick: () -> Unit) {
         val view = text(label, 16f)
         view.setPadding(dp(14), dp(8), dp(14), dp(8))
@@ -231,7 +200,10 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         view.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             marginEnd = dp(6)
         }
-        view.setOnClickListener { onClick() }
+        view.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) onClick()
+            true
+        }
         buttons.addView(view)
     }
 
@@ -249,13 +221,58 @@ class LookupPanel(context: Context) : LinearLayout(context) {
 
     private fun text(label: String, sp: Float): TextView {
         val view = TextView(context)
-        view.text = label
+        view.text = withGlyphFace(label)
         view.gravity = Gravity.CENTER
         view.isFocusable = false
         view.isFocusableInTouchMode = false
+        view.typeface = Typeface.DEFAULT
         view.setTextColor(Settings.getValues().mColors.get(ColorType.KEY_TEXT))
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
         return view
+    }
+
+    /** System CJK faces stop before most of Extension B. The bundled face has those glyphs. */
+    private fun withGlyphFace(label: String): CharSequence {
+        if (label.isEmpty() || Build.VERSION.SDK_INT < 23) return label
+        val span = SpannableString(label)
+        var offset = 0
+        while (offset < label.length) {
+            val codePoint = label.codePointAt(offset)
+            val end = offset + Character.charCount(codePoint)
+            span.setSpan(FaceSpan(faceFor(codePoint)), offset, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            offset = end
+        }
+        return span
+    }
+
+    private fun faceFor(codePoint: Int): Typeface {
+        faceByCode[codePoint]?.let { return it }
+        val sample = String(Character.toChars(codePoint))
+        val fromFile = fileFaces.firstOrNull { face ->
+            glyphPaint.typeface = face
+            glyphPaint.hasGlyph(sample)
+        }
+        val found = when {
+            fromFile != null -> fromFile
+            extensionFace != null && (fileFaces.isNotEmpty() || !fallbackHas(sample)) -> extensionFace
+            else -> Typeface.DEFAULT
+        }
+        faceByCode[codePoint] = found
+        return found
+    }
+
+    private fun fallbackHas(sample: String): Boolean {
+        glyphPaint.typeface = Typeface.DEFAULT
+        return glyphPaint.hasGlyph(sample)
+    }
+
+    private class FaceSpan(private val face: Typeface) : MetricAffectingSpan() {
+        override fun updateDrawState(paint: TextPaint) {
+            paint.typeface = face
+        }
+        override fun updateMeasureState(paint: TextPaint) {
+            paint.typeface = face
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -344,8 +361,27 @@ class LookupPanel(context: Context) : LinearLayout(context) {
 
     companion object {
         const val TAG = "hanzi_lookup"
-        private const val SWITCHER_CLEARANCE_DP = 56
-        private const val GRID_ROW_DP = 48
-        private const val GRID_WINDOW_ROWS = 18
+
+        /** Simplified Chinese face. Index 2 is SC in Noto CJK and in Samsung's SEC CJK collection. */
+        private fun loadSystemCjkFaces(): List<Typeface> {
+            if (Build.VERSION.SDK_INT < 26) return emptyList()
+            val paths = arrayOf(
+                "/system/fonts/NotoSansCJK-Regular.ttc",
+                "/system/fonts/NotoSerifCJK-Regular.ttc",
+                "/system/fonts/SECCJK-Regular.ttc",
+            )
+            val loaded = ArrayList<Typeface>()
+            for (path in paths) {
+                val file = File(path)
+                if (!file.isFile) continue
+                val face = runCatching { Typeface.Builder(file).setTtcIndex(2).build() }.getOrNull() ?: continue
+                loaded.add(face)
+            }
+            return loaded
+        }
+
+        private fun loadExtensionFace(context: Context): Typeface? {
+            return runCatching { Typeface.createFromAsset(context.assets, "fonts/cjk_ext.ttf") }.getOrNull()
+        }
     }
 }

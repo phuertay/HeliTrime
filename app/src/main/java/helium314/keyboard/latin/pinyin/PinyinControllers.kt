@@ -46,6 +46,7 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
             if (panel.listener == null) panel.listener = ControllerLookup { box[0]!! }
             panel.setModel(model)
             panel.visibility = View.VISIBLE
+            panel.bringToFront()
         }
         override fun hideLookup() {
             ime.pinyinLookupPanel()?.visibility = View.GONE

@@ -103,7 +103,7 @@ class PinyinInputController(
 
     fun onLeaveSubtype() {
         closeLookup()
-        dropPreedit()
+        endCompositionAsText()
         client.destroySession()
         ready = false
         PinyinSpaceLabel.text = null
@@ -385,9 +385,17 @@ class PinyinInputController(
     }
 
     private fun endCompositionAsText() {
-        if (hasPreedit) editor.finishComposingText()
-        client.clearComposition()
+        val keep = hasPreedit
+        // Clear the flag first. finishComposingText reports a selection update, and that update
+        // would otherwise treat the spelling as a cursor jump and delete it.
         hasPreedit = false
+        committing = true
+        try {
+            if (keep) editor.finishComposingText()
+            client.clearComposition()
+        } finally {
+            committing = false
+        }
         dropMenu()
     }
 
