@@ -25,6 +25,7 @@ import kotlin.test.assertTrue
 class PinyinInputControllerTest {
     private var lookupRows: List<LookupRow> = emptyList()
     private var lookupPad = false
+    private var strip = ""
 
     @Test
     fun numpadIsNotSentToRime() {
@@ -271,6 +272,26 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun secondLookupReusesTheMenuAndStartupLeavesTheNeutralStrip() {
+        val client = FakeRimeClient()
+        val controller = controller(client, FakeEditor())
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertEquals("", strip)
+        controller.onEvent('j'.code, 0, false)
+        controller.onEvent('i'.code, 0, false)
+        controller.onOpenLookup()
+        val afterFirst = client.snapshots
+        controller.onCloseLookup()
+        controller.onOpenLookup()
+        assertEquals(afterFirst + 1, client.snapshots)
+        controller.onCloseLookup()
+        controller.onEvent(0, KeyCode.RIME_SCRIPT, false)
+        val afterScript = client.snapshots
+        controller.onOpenLookup()
+        assertTrue(client.snapshots > afterScript + 1)
+    }
+
+    @Test
     fun englishAndPasswordHideTheLookup() {
         val locked = controller(FakeRimeClient(), FakeEditor())
         locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
@@ -290,10 +311,10 @@ class PinyinInputControllerTest {
             client = client,
             editor = editor,
             ui = object : PinyinUi {
-                override fun showPreparing(message: String) {}
-                override fun showFailure(message: String) {}
-                override fun showCandidates(snapshot: RimeSnapshot) {}
-                override fun showNeutral() {}
+                override fun showPreparing(message: String) { strip = message }
+                override fun showFailure(message: String) { strip = message }
+                override fun showCandidates(snapshot: RimeSnapshot) { strip = snapshot.preedit }
+                override fun showNeutral() { strip = "" }
                 override fun onModeChanged(label: String) {}
                 override fun showLookup(model: LookupModel) {
                     lookupRows = model.rows
@@ -343,6 +364,7 @@ private class FakeEditor : PinyinEditor {
 
 private class FakeRimeClient : RimeClient {
     override var failed: Boolean = false
+    var snapshots = 0
     private var session = false
     private val options = HashMap<String, Boolean>()
     private var raw = ""
@@ -394,6 +416,7 @@ private class FakeRimeClient : RimeClient {
     override fun shutdown() { session = false }
 
     override fun readSnapshot(): RimeSnapshot {
+        snapshots += 1
         val text = commit
         commit = ""
         return RimeSnapshot(
