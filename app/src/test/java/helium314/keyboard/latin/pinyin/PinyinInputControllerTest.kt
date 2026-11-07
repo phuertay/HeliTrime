@@ -58,7 +58,8 @@ class PinyinInputControllerTest {
         controller.onEvent(0, KeyCode.DELETE, false)
         assertEquals("niha", editor.composing)
 
-        controller.onUpdateSelection(belated = false, cursorInside = false)
+        editor.beforeOverride = "x"
+        controller.onUpdateSelection(belated = false, cursorInside = false, spanLength = 4)
         assertEquals("", editor.composing)
         assertFalse(controller.onEvent(0, KeyCode.DELETE, false))
 
@@ -66,12 +67,35 @@ class PinyinInputControllerTest {
         controller.onUpdateSelection(belated = false, cursorWhereWeSetIt = true)
         assertEquals("ni", editor.composing)
         editor.composing = ""
+        editor.beforeOverride = ""
         controller.onUpdateSelection(belated = false, cursorWhereWeSetIt = false, spanLength = -1)
-        assertEquals("ni", editor.composing)
+        editor.beforeOverride = null
+        assertEquals("你好ni", editor.committed)
+        controller.onEvent('h'.code, 0, false)
+        assertEquals("你好nih", editor.committed)
+        assertEquals("", editor.composing)
         controller.restorePreedit()
-        assertEquals("ni", editor.composing)
+        assertEquals("你好nih", editor.committed)
 
         assertFalse(controller.onEvent(-1, KeyCode.EMOJI, false))
+    }
+
+    @Test
+    fun firefoxRemovesTheUnderlineAndTheNextLetterExtendsTheSpelling() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('n'.code, 0, false)
+        editor.composing = ""
+        editor.beforeOverride = ""
+        controller.onUpdateSelection(belated = false, cursorInside = false, spanLength = 1)
+        editor.beforeOverride = null
+        assertEquals("n", editor.committed)
+        assertEquals("", editor.composing)
+        controller.onEvent('i'.code, 0, false)
+        assertEquals("ni", editor.committed)
+        assertEquals("", editor.composing)
     }
 
     @Test
@@ -376,6 +400,7 @@ private class FakeEditor : PinyinEditor {
     var finishedText = ""
     var wipedAfterFinish = false
     var onFinished: (() -> Unit)? = null
+    var beforeOverride: String? = null
 
     override fun setComposingText(text: String) {
         if (finished && text.isEmpty()) wipedAfterFinish = true
@@ -385,6 +410,7 @@ private class FakeEditor : PinyinEditor {
     override fun finishComposingText() {
         finished = true
         finishedText = composing
+        committed += composing
         composing = ""
         onFinished?.invoke()
     }
@@ -392,6 +418,33 @@ private class FakeEditor : PinyinEditor {
     override fun commitText(text: String) {
         committed += text
         composing = ""
+    }
+
+    override fun textBeforeCursor(n: Int): String {
+        beforeOverride?.let { return it.takeLast(n) }
+        return (committed + composing).takeLast(n)
+    }
+
+    override fun contains(text: String): Boolean {
+        if (text.isEmpty()) return false
+        if (composing.contains(text) || committed.contains(text)) return true
+        return beforeOverride?.contains(text) == true
+    }
+
+    override fun commitRaw(text: String) {
+        committed += text
+        composing = ""
+    }
+
+    override fun deleteBefore(n: Int) {
+        if (n <= 0) return
+        if (composing.length >= n) {
+            composing = composing.dropLast(n)
+            return
+        }
+        val rest = n - composing.length
+        composing = ""
+        committed = committed.dropLast(rest.coerceAtMost(committed.length))
     }
 }
 

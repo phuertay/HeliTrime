@@ -27,6 +27,9 @@ class PinyinInputController(
     private var failed = false
     private var hasPreedit = false
     private var preeditLength = 0
+    private var shown = ""
+    /** The page dropped the underline. The spelling is ordinary text until this word ends. */
+    private var plain = false
     private var restoring = false
     private var lookupOpen = false
     private var passed = false
@@ -188,8 +191,9 @@ class PinyinInputController(
      * @param belated true when this update is the one setComposingText caused.
      * @param cursorWhereWeSetIt true when the cursor is still the one setComposingText recorded.
      * @param spanLength length of the composing span, or -1 when the editor did not report one.
-     * Firefox does that on the Cursor page, and a short span means the page already dropped the
-     * underline. A span that still covers the spelling, with the cursor outside it, is a real move.
+     * Firefox on the Cursor page reports that and then deletes the underline. The spelling is
+     * written back as ordinary text. A span that still covers the spelling, with the cursor
+     * outside it and the spelling no longer in front of the cursor, is a real move.
      * @param cursorInside true when the cursor is inside a reported span. OneNote sends that for
      * the update setComposingText caused.
      * @return true to skip Latin recorrection. In 中文 that reset desyncs the connection and the
@@ -204,24 +208,34 @@ class PinyinInputController(
         if (committing || restoring) return true
         if (asciiMode || !ready || failed) return false
         if (!hasPreedit) return true
-        val covers = preeditLength > 0 && spanLength >= preeditLength
-        if (!covers) {
-            restorePreedit()
+        if (plain) {
+            if (belated || cursorWhereWeSetIt || spellingBeforeCursor()) return true
+            abandonPreedit()
             return true
         }
-        if (belated || cursorWhereWeSetIt || cursorInside) return true
-        dropPreedit()
+        val covers = preeditLength > 0 && spanLength >= preeditLength
+        if (covers && (belated || cursorWhereWeSetIt || cursorInside)) return true
+        if (covers && spellingBeforeCursor()) return true
+        if (covers) {
+            // The spelling is still in the field, just not at the cursor: the user moved.
+            // If the page deleted it, write it back. Firefox does that while the span still
+            // looks long enough.
+            if (shown.isNotEmpty() && editor.contains(shown)) dropPreedit() else holdSpellingAsPlainText()
+            return true
+        }
+        // The underline is gone. setComposingText again just flashes and disappears in Firefox.
+        holdSpellingAsPlainText()
         return true
     }
 
-    /** Put the spelling back after a restart, or a web editor, cleared the composing span. */
+    /** Put the spelling back after a restart cleared the composing span. */
     fun restorePreedit() {
         if (!ready || failed || asciiMode || !hasPreedit || restoring) return
         val snapshot = client.readSnapshot()
         if (snapshot.preedit.isEmpty()) return
         restoring = true
         try {
-            editor.setComposingText(snapshot.preedit)
+            showPreedit(snapshot.preedit)
             ui.showCandidates(snapshot)
         } finally {
             restoring = false
@@ -350,6 +364,8 @@ class PinyinInputController(
         committing = true
         hasPreedit = false
         preeditLength = 0
+        plain = false
+        shown = ""
         try {
             editor.commitText(text)
         } finally {
@@ -359,14 +375,17 @@ class PinyinInputController(
 
     private fun applySnapshot() {
         val snapshot = client.readSnapshot()
-        if (snapshot.commit.isNotEmpty()) commitPlain(snapshot.commit)
+        if (snapshot.commit.isNotEmpty()) {
+            if (plain) deleteShown()
+            commitPlain(snapshot.commit)
+        }
         if (!asciiMode && snapshot.preedit.isNotEmpty()) {
-            editor.setComposingText(snapshot.preedit)
-            hasPreedit = true
-            preeditLength = snapshot.preedit.length
+            showPreedit(snapshot.preedit)
             ui.showCandidates(snapshot)
         } else if (snapshot.preedit.isEmpty()) {
-            if (hasPreedit && snapshot.commit.isEmpty()) editor.setComposingText("")
+            if (hasPreedit && snapshot.commit.isEmpty()) erasePreedit()
+            plain = false
+            shown = ""
             hasPreedit = false
             preeditLength = 0
             ui.showNeutral()
@@ -392,10 +411,13 @@ class PinyinInputController(
         }
         val snapshot = client.readSnapshot()
         if (snapshot.preedit.isNotEmpty()) {
+            shown = snapshot.preedit
             hasPreedit = true
             preeditLength = snapshot.preedit.length
             ui.showCandidates(snapshot)
         } else {
+            plain = false
+            shown = ""
             hasPreedit = false
             preeditLength = 0
             ui.showNeutral()
@@ -404,7 +426,8 @@ class PinyinInputController(
 
     private fun endCompositionAsText() {
         val keep = hasPreedit
-        val spelling = if (keep) spellingWithoutSyllableSpaces(client.readSnapshot().preedit) else ""
+        val source = if (plain && shown.isNotEmpty()) shown else if (keep) client.readSnapshot().preedit else ""
+        val spelling = if (keep) spellingWithoutSyllableSpaces(source) else ""
         // Clear the flag first. finishComposingText reports a selection update, and that update
         // would otherwise treat the spelling as a cursor jump and delete it.
         hasPreedit = false
@@ -412,22 +435,96 @@ class PinyinInputController(
         committing = true
         try {
             if (keep) {
-                // The underline shows Rime's syllable spaces. Plain Latin text should not keep them.
-                if (spelling.isNotEmpty()) editor.setComposingText(spelling)
-                editor.finishComposingText()
+                if (plain) {
+                    // The letters are already in the field. Drop syllable spaces only.
+                    if (spelling != shown) replacePlain(spelling)
+                } else {
+                    // The underline shows Rime's syllable spaces. Plain Latin text should not keep them.
+                    if (spelling.isNotEmpty()) editor.setComposingText(spelling)
+                    editor.finishComposingText()
+                }
             }
             client.clearComposition()
         } finally {
             committing = false
+            plain = false
+            shown = ""
         }
         dropMenu()
     }
 
-    private fun dropPreedit() {
-        if (hasPreedit) editor.setComposingText("")
+    private fun showPreedit(preedit: String) {
+        if (plain) replacePlain(preedit) else editor.setComposingText(preedit)
+        shown = preedit
+        hasPreedit = preedit.isNotEmpty()
+        preeditLength = preedit.length
+    }
+
+    /** Firefox removed the composing span. Keep the letters as normal text. */
+    private fun holdSpellingAsPlainText() {
+        if (plain || shown.isEmpty()) return
+        val spelling = shown
+        plain = true
+        committing = true
+        try {
+            if (editor.textBeforeCursor(spelling.length).endsWith(spelling)) {
+                editor.finishComposingText()
+            } else {
+                editor.commitRaw(spelling)
+            }
+        } finally {
+            committing = false
+        }
+    }
+
+    private fun replacePlain(preedit: String) {
+        val previous = shown
+        committing = true
+        try {
+            if (previous.isNotEmpty() && editor.textBeforeCursor(previous.length).endsWith(previous)) {
+                editor.deleteBefore(previous.length)
+            }
+            if (preedit.isNotEmpty()) editor.commitRaw(preedit)
+        } finally {
+            committing = false
+        }
+    }
+
+    private fun deleteShown() {
+        if (shown.isEmpty()) return
+        committing = true
+        try {
+            if (editor.textBeforeCursor(shown.length).endsWith(shown)) editor.deleteBefore(shown.length)
+        } finally {
+            committing = false
+        }
+    }
+
+    private fun erasePreedit() {
+        if (plain) deleteShown() else editor.setComposingText("")
+    }
+
+    private fun spellingBeforeCursor(): Boolean {
+        return shown.isNotEmpty() && editor.textBeforeCursor(shown.length).endsWith(shown)
+    }
+
+    /** The cursor left the spelling. Leave whatever text is there and forget the word. */
+    private fun abandonPreedit() {
         client.clearComposition()
         hasPreedit = false
         preeditLength = 0
+        plain = false
+        shown = ""
+        dropMenu()
+    }
+
+    private fun dropPreedit() {
+        if (plain) deleteShown() else if (hasPreedit) editor.setComposingText("")
+        client.clearComposition()
+        hasPreedit = false
+        preeditLength = 0
+        plain = false
+        shown = ""
         dropMenu()
     }
 
