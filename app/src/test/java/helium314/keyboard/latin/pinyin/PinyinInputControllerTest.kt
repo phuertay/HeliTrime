@@ -62,6 +62,13 @@ class PinyinInputControllerTest {
         assertEquals("", editor.composing)
         assertFalse(controller.onEvent(0, KeyCode.DELETE, false))
 
+        for (letter in "ni") controller.onEvent(letter.code, 0, false)
+        controller.onUpdateSelection(belated = false, cursorWhereWeSetIt = true)
+        assertEquals("ni", editor.composing)
+        editor.composing = ""
+        controller.restorePreedit()
+        assertEquals("ni", editor.composing)
+
         assertFalse(controller.onEvent(-1, KeyCode.EMOJI, false))
     }
 

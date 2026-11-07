@@ -990,6 +990,11 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(true);
             }
         }
+        // resetCaches runs above and a restart clears the composing span. Put the spelling
+        // back after that, so the field still shows the whole pinyin.
+        if (mPinyinController != null && restarting && !isDifferentTextField) {
+            mPinyinController.restorePreedit();
+        }
 
         mainKeyboardView.setMainDictionaryAvailability(mDictionaryFacilitator.hasAtLeastOneInitializedMainDictionary());
         mainKeyboardView.setKeyPreviewPopupEnabled(currentSettingsValues.mKeyPreviewPopupOn);
@@ -1076,7 +1081,12 @@ public class LatinIME extends InputMethodService implements
                     newSelStart, oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd);
             final boolean stillInside = newSelStart == newSelEnd && composingSpanStart >= 0
                     && newSelStart >= composingSpanStart && newSelStart <= composingSpanEnd;
-            if (mPinyinController.onUpdateSelection(belated || stillInside)) {
+            // Editors often echo setComposingText with composingSpanStart < 0. The cursor is
+            // still the one we just set, so this is not a tap elsewhere.
+            final boolean cursorWhereWeSetIt = newSelStart == newSelEnd && newSelStart >= 0
+                    && mInputLogic.mConnection.getExpectedSelectionStart() == newSelStart
+                    && mInputLogic.mConnection.getExpectedSelectionEnd() == newSelEnd;
+            if (mPinyinController.onUpdateSelection(belated || stillInside, cursorWhereWeSetIt)) {
                 return;
             }
         }

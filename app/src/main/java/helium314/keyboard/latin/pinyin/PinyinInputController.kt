@@ -206,15 +206,27 @@ class PinyinInputController(
     /**
      * @param belated true when this update is the one setComposingText caused, or the cursor is
      * still inside that span. A real move outside the span drops the preedit.
+     * @param cursorWhereWeSetIt true when the cursor is still the one setComposingText recorded.
+     * Many editors report that update with no composing span. That used to look like a cursor
+     * jump, so each letter was drawn and then deleted before the next key.
      * @return true to skip Latin recorrection. In 中文 that reset desyncs the connection and the
      * next letter never shows.
      */
-    fun onUpdateSelection(belated: Boolean): Boolean {
+    fun onUpdateSelection(belated: Boolean, cursorWhereWeSetIt: Boolean = false): Boolean {
         if (committing) return true
         if (asciiMode || !ready || failed) return false
-        if (!hasPreedit || belated) return true
+        if (!hasPreedit || belated || cursorWhereWeSetIt) return true
         dropPreedit()
         return true
+    }
+
+    /** Put the spelling back after a restart cleared the composing span. */
+    fun restorePreedit() {
+        if (!ready || failed || asciiMode || !hasPreedit) return
+        val snapshot = client.readSnapshot()
+        if (snapshot.preedit.isEmpty()) return
+        editor.setComposingText(snapshot.preedit)
+        ui.showCandidates(snapshot)
     }
 
     fun onStartBatchInput(): Boolean = true
