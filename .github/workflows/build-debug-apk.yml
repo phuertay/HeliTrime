@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
 
@@ -31,12 +34,29 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew assembleDebug
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Helitrime-debug
-          path: app/build/outputs/apk/debug/*-debug*.apk
-          if-no-files-found: error
+      # Actions artifacts are always zip files. A prerelease asset is the apk itself.
+      - name: Publish the apk
+        if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          apk=$(ls app/build/outputs/apk/debug/*-debug*.apk)
+          test -f "$apk"
+          name=$(basename "$apk")
+          tag="v${name#Helitrime_}"
+          tag="${tag%.apk}"
+          notes="Debug build ${RELEASE_SHA}. Download ${name} directly. It is not inside a zip."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" --clobber
+            gh release edit "$tag" --notes "$notes" --target "$RELEASE_SHA" --prerelease
+          else
+            gh release create "$tag" "$apk" --prerelease --target "$RELEASE_SHA" --title "Helitrime ${tag#v}" --notes "$notes"
+          fi
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${name}"
+          echo "### Debug APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "[${name}](${url})" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Archive reports for failed job
         uses: actions/upload-artifact@v4
