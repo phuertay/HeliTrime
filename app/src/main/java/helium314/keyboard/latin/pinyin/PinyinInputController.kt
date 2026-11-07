@@ -26,7 +26,8 @@ class PinyinInputController(
     private var preparing = false
     private var failed = false
     private var hasPreedit = false
-    private var swipeLatched = false
+    private var preeditLength = 0
+    private var restoring = false
     private var lookupOpen = false
     private var passed = false
     private var committing = false
@@ -98,6 +99,7 @@ class PinyinInputController(
         client.destroySession()
         ready = false
         hasPreedit = false
+        preeditLength = 0
         PinyinSpaceLabel.text = null
     }
 
@@ -182,51 +184,48 @@ class PinyinInputController(
         applySnapshot()
     }
 
-    fun onVerticalSpaceSwipe(steps: Int) {
-        if (steps <= 0 || swipeLatched || !ready || failed) return
-        swipeLatched = true
-        if (!asciiMode) {
-            closeLookup()
-            endCompositionAsText()
-            client.setOption("ascii_mode", true)
-            asciiMode = true
-            ui.showNeutral()
-            publishMode()
-        } else if (!asciiLocked) {
-            client.setOption("ascii_mode", false)
-            asciiMode = false
-            publishMode()
-        }
-    }
-
-    fun onEndSpaceSwipe() {
-        swipeLatched = false
-    }
-
     /**
-     * @param belated true when this update is the one setComposingText caused, or the cursor is
-     * still inside that span. A real move outside the span drops the preedit.
+     * @param belated true when this update is the one setComposingText caused.
      * @param cursorWhereWeSetIt true when the cursor is still the one setComposingText recorded.
-     * Many editors report that update with no composing span. That used to look like a cursor
-     * jump, so each letter was drawn and then deleted before the next key.
+     * @param spanLength length of the composing span, or -1 when the editor did not report one.
+     * Firefox does that on the Cursor page, and a short span means the page already dropped the
+     * underline. A span that still covers the spelling, with the cursor outside it, is a real move.
+     * @param cursorInside true when the cursor is inside a reported span. OneNote sends that for
+     * the update setComposingText caused.
      * @return true to skip Latin recorrection. In 中文 that reset desyncs the connection and the
      * next letter never shows.
      */
-    fun onUpdateSelection(belated: Boolean, cursorWhereWeSetIt: Boolean = false): Boolean {
-        if (committing) return true
+    fun onUpdateSelection(
+        belated: Boolean,
+        cursorWhereWeSetIt: Boolean = false,
+        spanLength: Int = Int.MAX_VALUE,
+        cursorInside: Boolean = false,
+    ): Boolean {
+        if (committing || restoring) return true
         if (asciiMode || !ready || failed) return false
-        if (!hasPreedit || belated || cursorWhereWeSetIt) return true
+        if (!hasPreedit) return true
+        val covers = preeditLength > 0 && spanLength >= preeditLength
+        if (!covers) {
+            restorePreedit()
+            return true
+        }
+        if (belated || cursorWhereWeSetIt || cursorInside) return true
         dropPreedit()
         return true
     }
 
-    /** Put the spelling back after a restart cleared the composing span. */
+    /** Put the spelling back after a restart, or a web editor, cleared the composing span. */
     fun restorePreedit() {
-        if (!ready || failed || asciiMode || !hasPreedit) return
+        if (!ready || failed || asciiMode || !hasPreedit || restoring) return
         val snapshot = client.readSnapshot()
         if (snapshot.preedit.isEmpty()) return
-        editor.setComposingText(snapshot.preedit)
-        ui.showCandidates(snapshot)
+        restoring = true
+        try {
+            editor.setComposingText(snapshot.preedit)
+            ui.showCandidates(snapshot)
+        } finally {
+            restoring = false
+        }
     }
 
     fun onStartBatchInput(): Boolean = true
@@ -344,11 +343,13 @@ class PinyinInputController(
         commitPlain(text)
         client.clearComposition()
         hasPreedit = false
+        preeditLength = 0
     }
 
     private fun commitPlain(text: String) {
         committing = true
         hasPreedit = false
+        preeditLength = 0
         try {
             editor.commitText(text)
         } finally {
@@ -362,10 +363,12 @@ class PinyinInputController(
         if (!asciiMode && snapshot.preedit.isNotEmpty()) {
             editor.setComposingText(snapshot.preedit)
             hasPreedit = true
+            preeditLength = snapshot.preedit.length
             ui.showCandidates(snapshot)
         } else if (snapshot.preedit.isEmpty()) {
             if (hasPreedit && snapshot.commit.isEmpty()) editor.setComposingText("")
             hasPreedit = false
+            preeditLength = 0
             ui.showNeutral()
         }
         publishMode()
@@ -383,15 +386,18 @@ class PinyinInputController(
     private fun publishStrip() {
         if (asciiMode) {
             hasPreedit = false
+            preeditLength = 0
             ui.showNeutral()
             return
         }
         val snapshot = client.readSnapshot()
         if (snapshot.preedit.isNotEmpty()) {
             hasPreedit = true
+            preeditLength = snapshot.preedit.length
             ui.showCandidates(snapshot)
         } else {
             hasPreedit = false
+            preeditLength = 0
             ui.showNeutral()
         }
     }
@@ -401,6 +407,7 @@ class PinyinInputController(
         // Clear the flag first. finishComposingText reports a selection update, and that update
         // would otherwise treat the spelling as a cursor jump and delete it.
         hasPreedit = false
+        preeditLength = 0
         committing = true
         try {
             if (keep) editor.finishComposingText()
@@ -415,6 +422,7 @@ class PinyinInputController(
         if (hasPreedit) editor.setComposingText("")
         client.clearComposition()
         hasPreedit = false
+        preeditLength = 0
         dropMenu()
     }
 

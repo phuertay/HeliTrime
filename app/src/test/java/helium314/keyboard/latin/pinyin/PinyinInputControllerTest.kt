@@ -58,7 +58,7 @@ class PinyinInputControllerTest {
         controller.onEvent(0, KeyCode.DELETE, false)
         assertEquals("niha", editor.composing)
 
-        controller.onUpdateSelection(belated = false)
+        controller.onUpdateSelection(belated = false, cursorInside = false)
         assertEquals("", editor.composing)
         assertFalse(controller.onEvent(0, KeyCode.DELETE, false))
 
@@ -66,6 +66,8 @@ class PinyinInputControllerTest {
         controller.onUpdateSelection(belated = false, cursorWhereWeSetIt = true)
         assertEquals("ni", editor.composing)
         editor.composing = ""
+        controller.onUpdateSelection(belated = false, cursorWhereWeSetIt = false, spanLength = -1)
+        assertEquals("ni", editor.composing)
         controller.restorePreedit()
         assertEquals("ni", editor.composing)
 
@@ -73,43 +75,7 @@ class PinyinInputControllerTest {
     }
 
     @Test
-    fun downwardSpaceSwipeTogglesOncePerGesture() {
-        val client = FakeRimeClient()
-        val editor = FakeEditor()
-        val controller = controller(client, editor)
-        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        controller.onEvent('n'.code, 0, false)
-        controller.onEvent('i'.code, 0, false)
-        controller.onVerticalSpaceSwipe(1)
-        assertTrue(editor.finished)
-        assertEquals("ni", editor.finishedText)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onVerticalSpaceSwipe(2)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onVerticalSpaceSwipe(-1)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(-3)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(1)
-        assertFalse(client.getOption("ascii_mode"))
-    }
-
-    @Test
     fun switchingToEnglishKeepsTheSpelling() {
-        val client = FakeRimeClient()
-        val editor = FakeEditor()
-        val controller = controller(client, editor)
-        editor.onFinished = { controller.onUpdateSelection(belated = false) }
-        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        controller.onEvent('j'.code, 0, false)
-        controller.onEvent('i'.code, 0, false)
-        controller.onVerticalSpaceSwipe(1)
-        assertEquals("ji", editor.finishedText)
-        assertFalse(editor.wipedAfterFinish)
-        assertTrue(client.getOption("ascii_mode"))
-
         val globeClient = FakeRimeClient()
         val globeEditor = FakeEditor()
         val globe = controller(globeClient, globeEditor)
@@ -123,25 +89,19 @@ class PinyinInputControllerTest {
     }
 
     @Test
-    fun upwardStepDoesNotToggle() {
+    fun passwordFieldTypesLatinAndDoesNotCompose() {
         val client = FakeRimeClient()
-        val controller = controller(client, FakeEditor())
-        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        controller.onVerticalSpaceSwipe(-1)
-        assertFalse(client.getOption("ascii_mode"))
-    }
-
-    @Test
-    fun lockedAsciiIgnoresDownwardSwipe() {
-        val client = FakeRimeClient()
-        val controller = controller(client, FakeEditor())
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
         controller.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
         assertTrue(client.getOption("ascii_mode"))
-        controller.onVerticalSpaceSwipe(1)
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(1)
-        assertTrue(client.getOption("ascii_mode"))
+        assertEquals("英文", PinyinSpaceLabel.text)
         assertFalse(controller.onEvent('a'.code, 0, false))
+        assertEquals("", editor.composing)
+        assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI))
+        assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS))
+        assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        assertFalse(editorForcesAscii(InputType.TYPE_CLASS_TEXT))
     }
 
     @Test
@@ -190,12 +150,8 @@ class PinyinInputControllerTest {
         val client = FakeRimeClient()
         val controller = controller(client, FakeEditor(), MemoryScriptStore())
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        controller.onVerticalSpaceSwipe(1)
         assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
         assertFalse(client.getOption("zh_hans"))
-        assertEquals("英文", PinyinSpaceLabel.text)
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(1)
         assertEquals("中文·繁", PinyinSpaceLabel.text)
     }
 
