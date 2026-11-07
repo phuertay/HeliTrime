@@ -89,6 +89,23 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun leavingChineseDropsSyllableSpaces() {
+        assertEquals("nihao", spellingWithoutSyllableSpaces("ni hao"))
+        assertEquals("xi'an", spellingWithoutSyllableSpaces("xi 'an"))
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        editor.onFinished = { controller.onUpdateSelection(belated = false) }
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        client.shown = "ni hao"
+        controller.onEvent('n'.code, 0, false)
+        assertEquals("ni hao", editor.composing)
+        controller.onLeaveSubtype()
+        assertEquals("nihao", editor.finishedText)
+        assertEquals("", editor.composing)
+    }
+
+    @Test
     fun passwordFieldTypesLatinAndDoesNotCompose() {
         val client = FakeRimeClient()
         val editor = FakeEditor()
@@ -387,6 +404,7 @@ private class FakeRimeClient : RimeClient {
     private val options = HashMap<String, Boolean>()
     private var raw = ""
     private var commit = ""
+    var shown: String? = null
 
     override fun hasSession() = session
 
@@ -446,8 +464,8 @@ private class FakeRimeClient : RimeClient {
         val list = currentCandidates()
         return RimeSnapshot(
             commit = text,
-            preedit = raw,
-            cursor = raw.length,
+            preedit = shown ?: raw,
+            cursor = (shown ?: raw).length,
             pageNo = if (pages != null) page else 0,
             isLastPage = pages == null || page == pages!!.lastIndex,
             asciiMode = getOption("ascii_mode"),

@@ -404,13 +404,18 @@ class PinyinInputController(
 
     private fun endCompositionAsText() {
         val keep = hasPreedit
+        val spelling = if (keep) spellingWithoutSyllableSpaces(client.readSnapshot().preedit) else ""
         // Clear the flag first. finishComposingText reports a selection update, and that update
         // would otherwise treat the spelling as a cursor jump and delete it.
         hasPreedit = false
         preeditLength = 0
         committing = true
         try {
-            if (keep) editor.finishComposingText()
+            if (keep) {
+                // The underline shows Rime's syllable spaces. Plain Latin text should not keep them.
+                if (spelling.isNotEmpty()) editor.setComposingText(spelling)
+                editor.finishComposingText()
+            }
             client.clearComposition()
         } finally {
             committing = false
@@ -507,4 +512,9 @@ class PinyinInputController(
     }
 
     private data class PendingKey(val codePoint: Int, val keyCode: Int, val symbols: Boolean)
+}
+
+/** Rime inserts a space between syllables in the preedit. The user did not type it. */
+internal fun spellingWithoutSyllableSpaces(preedit: String): String = buildString(preedit.length) {
+    for (ch in preedit) if (ch != ' ') append(ch)
 }
