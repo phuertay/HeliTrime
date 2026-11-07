@@ -58,51 +58,48 @@ class PinyinInputControllerTest {
         controller.onEvent(0, KeyCode.DELETE, false)
         assertEquals("niha", editor.composing)
 
-        controller.onUpdateSelection(belated = false)
+        editor.beforeOverride = "x"
+        controller.onUpdateSelection(belated = false, cursorInside = false, spanLength = 4)
         assertEquals("", editor.composing)
         assertFalse(controller.onEvent(0, KeyCode.DELETE, false))
+
+        for (letter in "ni") controller.onEvent(letter.code, 0, false)
+        controller.onUpdateSelection(belated = false, cursorWhereWeSetIt = true)
+        assertEquals("ni", editor.composing)
+        editor.composing = ""
+        editor.beforeOverride = ""
+        controller.onUpdateSelection(belated = false, cursorWhereWeSetIt = false, spanLength = -1)
+        editor.beforeOverride = null
+        assertEquals("你好ni", editor.committed)
+        controller.onEvent('h'.code, 0, false)
+        assertEquals("你好nih", editor.committed)
+        assertEquals("", editor.composing)
+        controller.restorePreedit()
+        assertEquals("你好nih", editor.committed)
 
         assertFalse(controller.onEvent(-1, KeyCode.EMOJI, false))
     }
 
     @Test
-    fun downwardSpaceSwipeTogglesOncePerGesture() {
+    fun firefoxRemovesTheUnderlineAndTheNextLetterExtendsTheSpelling() {
         val client = FakeRimeClient()
         val editor = FakeEditor()
         val controller = controller(client, editor)
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
         controller.onEvent('n'.code, 0, false)
+        editor.composing = ""
+        editor.beforeOverride = ""
+        controller.onUpdateSelection(belated = false, cursorInside = false, spanLength = 1)
+        editor.beforeOverride = null
+        assertEquals("n", editor.committed)
+        assertEquals("", editor.composing)
         controller.onEvent('i'.code, 0, false)
-        controller.onVerticalSpaceSwipe(1)
-        assertTrue(editor.finished)
-        assertEquals("ni", editor.finishedText)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onVerticalSpaceSwipe(2)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onVerticalSpaceSwipe(-1)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(-3)
-        assertTrue(client.getOption("ascii_mode"))
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(1)
-        assertFalse(client.getOption("ascii_mode"))
+        assertEquals("ni", editor.committed)
+        assertEquals("", editor.composing)
     }
 
     @Test
     fun switchingToEnglishKeepsTheSpelling() {
-        val client = FakeRimeClient()
-        val editor = FakeEditor()
-        val controller = controller(client, editor)
-        editor.onFinished = { controller.onUpdateSelection(belated = false) }
-        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        controller.onEvent('j'.code, 0, false)
-        controller.onEvent('i'.code, 0, false)
-        controller.onVerticalSpaceSwipe(1)
-        assertEquals("ji", editor.finishedText)
-        assertFalse(editor.wipedAfterFinish)
-        assertTrue(client.getOption("ascii_mode"))
-
         val globeClient = FakeRimeClient()
         val globeEditor = FakeEditor()
         val globe = controller(globeClient, globeEditor)
@@ -116,25 +113,36 @@ class PinyinInputControllerTest {
     }
 
     @Test
-    fun upwardStepDoesNotToggle() {
+    fun leavingChineseDropsSyllableSpaces() {
+        assertEquals("nihao", spellingWithoutSyllableSpaces("ni hao"))
+        assertEquals("xi'an", spellingWithoutSyllableSpaces("xi 'an"))
         val client = FakeRimeClient()
-        val controller = controller(client, FakeEditor())
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        editor.onFinished = { controller.onUpdateSelection(belated = false) }
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        controller.onVerticalSpaceSwipe(-1)
-        assertFalse(client.getOption("ascii_mode"))
+        client.shown = "ni hao"
+        controller.onEvent('n'.code, 0, false)
+        assertEquals("ni hao", editor.composing)
+        controller.onLeaveSubtype()
+        assertEquals("nihao", editor.finishedText)
+        assertEquals("", editor.composing)
     }
 
     @Test
-    fun lockedAsciiIgnoresDownwardSwipe() {
+    fun passwordFieldTypesLatinAndDoesNotCompose() {
         val client = FakeRimeClient()
-        val controller = controller(client, FakeEditor())
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
         controller.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
         assertTrue(client.getOption("ascii_mode"))
-        controller.onVerticalSpaceSwipe(1)
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(1)
-        assertTrue(client.getOption("ascii_mode"))
+        assertEquals("英文", PinyinSpaceLabel.text)
         assertFalse(controller.onEvent('a'.code, 0, false))
+        assertEquals("", editor.composing)
+        assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI))
+        assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS))
+        assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        assertFalse(editorForcesAscii(InputType.TYPE_CLASS_TEXT))
     }
 
     @Test
@@ -183,12 +191,8 @@ class PinyinInputControllerTest {
         val client = FakeRimeClient()
         val controller = controller(client, FakeEditor(), MemoryScriptStore())
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        controller.onVerticalSpaceSwipe(1)
         assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
         assertFalse(client.getOption("zh_hans"))
-        assertEquals("英文", PinyinSpaceLabel.text)
-        controller.onEndSpaceSwipe()
-        controller.onVerticalSpaceSwipe(1)
         assertEquals("中文·繁", PinyinSpaceLabel.text)
     }
 
@@ -396,6 +400,7 @@ private class FakeEditor : PinyinEditor {
     var finishedText = ""
     var wipedAfterFinish = false
     var onFinished: (() -> Unit)? = null
+    var beforeOverride: String? = null
 
     override fun setComposingText(text: String) {
         if (finished && text.isEmpty()) wipedAfterFinish = true
@@ -405,6 +410,7 @@ private class FakeEditor : PinyinEditor {
     override fun finishComposingText() {
         finished = true
         finishedText = composing
+        committed += composing
         composing = ""
         onFinished?.invoke()
     }
@@ -412,6 +418,33 @@ private class FakeEditor : PinyinEditor {
     override fun commitText(text: String) {
         committed += text
         composing = ""
+    }
+
+    override fun textBeforeCursor(n: Int): String {
+        beforeOverride?.let { return it.takeLast(n) }
+        return (committed + composing).takeLast(n)
+    }
+
+    override fun contains(text: String): Boolean {
+        if (text.isEmpty()) return false
+        if (composing.contains(text) || committed.contains(text)) return true
+        return beforeOverride?.contains(text) == true
+    }
+
+    override fun commitRaw(text: String) {
+        committed += text
+        composing = ""
+    }
+
+    override fun deleteBefore(n: Int) {
+        if (n <= 0) return
+        if (composing.length >= n) {
+            composing = composing.dropLast(n)
+            return
+        }
+        val rest = n - composing.length
+        composing = ""
+        committed = committed.dropLast(rest.coerceAtMost(committed.length))
     }
 }
 
@@ -424,6 +457,7 @@ private class FakeRimeClient : RimeClient {
     private val options = HashMap<String, Boolean>()
     private var raw = ""
     private var commit = ""
+    var shown: String? = null
 
     override fun hasSession() = session
 
@@ -483,8 +517,8 @@ private class FakeRimeClient : RimeClient {
         val list = currentCandidates()
         return RimeSnapshot(
             commit = text,
-            preedit = raw,
-            cursor = raw.length,
+            preedit = shown ?: raw,
+            cursor = (shown ?: raw).length,
             pageNo = if (pages != null) page else 0,
             isLastPage = pages == null || page == pages!!.lastIndex,
             asciiMode = getOption("ascii_mode"),

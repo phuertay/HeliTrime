@@ -51,21 +51,38 @@ dependencies {
 
 // Prebuilt librime_jni.so is linked to c++_shared. The cmake early-return
 // builds no native target, so AGP does not package the STL on its own.
+// SDK lookup stays inside the action. Reading local.properties while the task
+// is created fails CI, which has ANDROID_HOME and no local.properties.
 val copyPrebuiltRimeStl = tasks.register("copyPrebuiltRimeStl") {
     val jniDir = file("src/main/jniLibs/arm64-v8a")
-    val sdkDir = rootProject.file("local.properties").readLines()
-        .first { it.startsWith("sdk.dir=") }.substringAfter("=")
-    val ndkDir = file(sdkDir).resolve("ndk/${android.ndkVersion}")
+    val ndkVersionName = android.ndkVersion
+    val sdkDir = findAndroidSdkDir()
     onlyIf {
         jniDir.resolve("librime_jni.so").isFile && !jniDir.resolve("libc++_shared.so").isFile
     }
     doLast {
+        val root = sdkDir ?: error("Android SDK not found. Set sdk.dir in local.properties or ANDROID_HOME.")
+        val ndkDir = root.resolve("ndk/$ndkVersionName")
         val host = ndkDir.resolve("toolchains/llvm/prebuilt").listFiles()?.firstOrNull { it.isDirectory }
             ?: error("NDK prebuilt host missing under $ndkDir")
         val stl = host.resolve("sysroot/usr/lib/aarch64-linux-android/libc++_shared.so")
         check(stl.isFile) { "missing $stl" }
         stl.copyTo(jniDir.resolve("libc++_shared.so"))
     }
+}
+
+fun findAndroidSdkDir(): java.io.File? {
+    val local = rootProject.file("local.properties")
+    if (local.isFile) {
+        val line = local.readLines().firstOrNull { it.startsWith("sdk.dir=") }
+        if (line != null) {
+            val path = line.substringAfter("=").trim()
+            if (path.isNotEmpty()) return file(path)
+        }
+    }
+    val env = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+    if (!env.isNullOrBlank()) return file(env)
+    return null
 }
 tasks.named("preBuild").configure { dependsOn(copyPrebuiltRimeStl) }
 

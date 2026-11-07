@@ -990,6 +990,11 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(true);
             }
         }
+        // resetCaches runs above and a restart clears the composing span. Put the spelling
+        // back after that, so the field still shows the whole pinyin.
+        if (mPinyinController != null && restarting && !isDifferentTextField) {
+            mPinyinController.restorePreedit();
+        }
 
         mainKeyboardView.setMainDictionaryAvailability(mDictionaryFacilitator.hasAtLeastOneInitializedMainDictionary());
         mainKeyboardView.setKeyPreviewPopupEnabled(currentSettingsValues.mKeyPreviewPopupOn);
@@ -1074,9 +1079,17 @@ public class LatinIME extends InputMethodService implements
         if (mPinyinController != null) {
             final boolean belated = mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart,
                     newSelStart, oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd);
-            final boolean stillInside = newSelStart == newSelEnd && composingSpanStart >= 0
+            // Editors often echo setComposingText with composingSpanStart < 0. The cursor is
+            // still the one we just set, so this is not a tap elsewhere.
+            final boolean cursorWhereWeSetIt = newSelStart == newSelEnd && newSelStart >= 0
+                    && mInputLogic.mConnection.getExpectedSelectionStart() == newSelStart
+                    && mInputLogic.mConnection.getExpectedSelectionEnd() == newSelEnd;
+            // -1 when the editor omitted the span. A reported span uses its character length.
+            final int spanLength = composingSpanStart < 0 || composingSpanEnd < composingSpanStart
+                    ? -1 : composingSpanEnd - composingSpanStart;
+            final boolean cursorInside = newSelStart == newSelEnd && composingSpanStart >= 0
                     && newSelStart >= composingSpanStart && newSelStart <= composingSpanEnd;
-            if (mPinyinController.onUpdateSelection(belated || stillInside)) {
+            if (mPinyinController.onUpdateSelection(belated, cursorWhereWeSetIt, spanLength, cursorInside)) {
                 return;
             }
         }

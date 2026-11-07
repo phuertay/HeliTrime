@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.inputmethod.ExtractedTextRequest
 import helium314.keyboard.keyboard.KeyboardElement
 import helium314.keyboard.latin.LatinIME
 import helium314.keyboard.latin.R
@@ -22,6 +23,28 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         override fun commitText(text: String) {
             if (text.isEmpty()) return
             ime.commitPinyinText(text)
+        }
+        override fun textBeforeCursor(n: Int): String {
+            if (n <= 0) return ""
+            return ime.currentInputConnection?.getTextBeforeCursor(n, 0)?.toString() ?: ""
+        }
+        override fun contains(text: String): Boolean {
+            if (text.isEmpty()) return false
+            val connection = ime.currentInputConnection ?: return false
+            val request = ExtractedTextRequest()
+            request.hintMaxChars = 10000
+            val extracted = connection.getExtractedText(request, 0)?.text
+            if (extracted != null) return extracted.contains(text)
+            val before = connection.getTextBeforeCursor(text.length + 80, 0)?.toString() ?: ""
+            val after = connection.getTextAfterCursor(text.length + 80, 0)?.toString() ?: ""
+            return (before + after).contains(text)
+        }
+        override fun commitRaw(text: String) {
+            if (text.isEmpty()) return
+            ime.pinyinConnection().commitText(text, 1)
+        }
+        override fun deleteBefore(n: Int) {
+            if (n > 0) ime.pinyinConnection().deleteTextBeforeCursor(n)
         }
     }
     val box = arrayOfNulls<PinyinInputController>(1)
