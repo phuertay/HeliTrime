@@ -1,0 +1,10 @@
+# Rime configuration
+# Compact model from rime-octagram-data release 20260712.
+# luna_pinyin is a traditional dictionary. The simplifier runs after this.
+
+hant:
+  grammar:
+    language: zh-hant-t-essay-bgw-compact
+  translator/contextual_suggestions: true
+  translator/max_homophones: 7
+  translator/max_homographs: 7

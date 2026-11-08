@@ -1,6 +1,6 @@
 # make-emoji-keys
 
-This module takes care of generating emoji data bundled with HeliBoard.
+This module takes care of generating emoji data bundled with Helitrime (and upstream HeliBoard).
 Basically data is generated in three steps:
 1. Unicode emoji table provides code points and grouping plus ordering.
 2. Local file lists every new emojis supported for every android version since 4.4.

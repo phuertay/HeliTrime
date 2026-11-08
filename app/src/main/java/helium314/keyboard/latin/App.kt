@@ -28,23 +28,37 @@ class App : Application() {
         val ctx: Context = this
         DebugFlags.init(this) // needed by several other inits, so do it first
 
-        val scope = CoroutineScope(Dispatchers.Default)
-        // other inits can be in parallel, except what depends on SubtypeSettings
-        val jobs = listOf(
-            scope.launch {
-                SubtypeSettings.init(ctx)
-                RichInputMethodManager.init(ctx)
-                checkVersionUpgrade(ctx)
-            },
-            scope.launch { FoldableUtils.init(ctx) },
-            scope.launch { Settings.init(ctx) },
-            // upgrade toolbar on every debug apk start because we may work on adding a new toolbar key
-            scope.launch { if (BuildConfig.DEBUG) upgradeToolbarPrefs(prefs()) },
-            scope.launch { transferOldPinnedClips(ctx) }, // todo: remove in a few months, maybe end 2026
-            scope.launch { Defaults.initDynamicDefaults(ctx) }
-        )
-        runBlocking { jobs.joinAll() } // word should be finished before anything else is started
+        // Robolectric pauses threads the sandbox did not start. The parallel
+        // init below then waits forever, and a unit-test class never finishes.
+        if (runningUnderRobolectric()) {
+            FoldableUtils.init(ctx)
+            Settings.init(ctx)
+            SubtypeSettings.init(ctx)
+            RichInputMethodManager.init(ctx)
+            checkVersionUpgrade(ctx)
+            if (BuildConfig.DEBUG) upgradeToolbarPrefs(prefs())
+            transferOldPinnedClips(ctx)
+            Defaults.initDynamicDefaults(ctx)
+        } else {
+            val scope = CoroutineScope(Dispatchers.Default)
+            // other inits can be in parallel, except what depends on SubtypeSettings
+            val jobs = listOf(
+                scope.launch {
+                    SubtypeSettings.init(ctx)
+                    RichInputMethodManager.init(ctx)
+                    checkVersionUpgrade(ctx)
+                },
+                scope.launch { FoldableUtils.init(ctx) },
+                scope.launch { Settings.init(ctx) },
+                // upgrade toolbar on every debug apk start because we may work on adding a new toolbar key
+                scope.launch { if (BuildConfig.DEBUG) upgradeToolbarPrefs(prefs()) },
+                scope.launch { transferOldPinnedClips(ctx) }, // todo: remove in a few months, maybe end 2026
+                scope.launch { Defaults.initDynamicDefaults(ctx) }
+            )
+            runBlocking { jobs.joinAll() } // word should be finished before anything else is started
+        }
 
+        val scope = CoroutineScope(Dispatchers.Default)
         scope.launch { // do some uncritical work in background for faster startup
             SupportedEmojis.load(this@App)
             ExpandableDictionaryUtils.initUpToDateDicts(this@App)
@@ -69,3 +83,6 @@ class App : Application() {
         }
     }
 }
+
+private fun runningUnderRobolectric(): Boolean =
+    App::class.java.classLoader?.getResource("org/robolectric/Robolectric.class") != null

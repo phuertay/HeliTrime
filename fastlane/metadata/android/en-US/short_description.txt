@@ -1,1 +1,1 @@
-Customizable open-source keyboard
+Offline keyboard with 26-key pinyin

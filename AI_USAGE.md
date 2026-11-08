@@ -1,5 +1,7 @@
 # AI / LLM Usage
 
+Helitrime is maintained in this fork. Commits here disclose AI assistance. The rest of this file is HeliBoard's policy for [HeliBorg/HeliBoard](https://github.com/HeliBorg/HeliBoard). Do not send AI-written pull requests there.
+
 AI / LLM usage for code and communication is not completely prohibited, but please don't.
 There are 2 main reasons:
 * **Time**: Generating large volumes of content with LLMs is simple, but reading and trying to understand it takes time.

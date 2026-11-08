@@ -105,6 +105,7 @@ fun SubtypeScreen(
         currentSubtypeString = subtype.toPref()
     }
     LaunchedEffect(currentSubtypeString) {
+        if (currentSubtype.hasExtraValueOf(ExtraValue.RIME_SCHEMA)) return@LaunchedEffect
         if (ScriptUtils.scriptSupportsUppercase(currentSubtype.locale)) return@LaunchedEffect
         // update the noShiftKey extra value
         val mainLayout = currentSubtype.mainLayoutName()

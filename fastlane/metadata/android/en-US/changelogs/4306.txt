@@ -1,0 +1,5 @@
+* add 26-key pinyin, with simplified and traditional
+* look up a character by radical or handwriting
+* treat z/zh, n/l, and an/ang as the same sound
+* rank phrases with the octagram language model
+* follow HeliBoard through 2026-11-07

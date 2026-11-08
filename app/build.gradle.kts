@@ -10,16 +10,27 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "helium314.keyboard"
+        applicationId = "helitrime001.keyboard"
         minSdk = 21
         targetSdk = 37
-        versionCode = 4300
-        versionName = "4.3-beta1"
+        versionCode = 4306
+        versionName = "4.3-beta7"
         ndk {
             abiFilters.clear()
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+
+    signingConfigs {
+        // Public debug key, checked in so every debug apk can update the last one.
+        // Each GitHub runner otherwise makes its own key, and Android then refuses the install.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
@@ -28,12 +39,16 @@ android {
             isShrinkResources = false
             isDebuggable = false
             isJniDebuggable = false
+            // The published beta uses the checked-in debug key, so the next
+            // normal apk replaces the last one. There is no separate upload key.
+            signingConfig = signingConfigs.getByName("debug")
         }
         create("nouserlib") { // same as release, but does not allow the user to provide a library
             isMinifyEnabled = true
             isShrinkResources = false
             isDebuggable = false
             isJniDebuggable = false
+            matchingFallbacks += listOf("release")
         }
         debug {
             // "normal" debug has minify for smaller APK to fit the GitHub 25 MB limit when zipped
@@ -41,10 +56,13 @@ android {
             isMinifyEnabled = true
             isJniDebuggable = false
             applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("debug")
         }
         create("runTests") { // build variant for running tests on CI that skips tests known to fail
             isMinifyEnabled = false
             isJniDebuggable = false
+            matchingFallbacks += listOf("debug")
         }
         create("debugNoMinify") { // for faster builds in IDE
             isDebuggable = true
@@ -52,6 +70,7 @@ android {
             isJniDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".debug"
+            matchingFallbacks += listOf("debug")
             //isDefault = true // would be nice as default, but breaks unit test handling in Android Studio
         }
 
@@ -66,10 +85,16 @@ android {
             }
             variant.outputs.forEach { output ->
                 if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                    output.outputFileName = "HeliBoard_${defaultConfig.versionName}-${variant.buildType}.apk"
+                    output.outputFileName = "Helitrime_${defaultConfig.versionName}-${variant.buildType}.apk"
                 }
             }
         }
+    }
+
+    // AGP 9 creates unit-test variants for debug only. CI runs the runTests
+    // build type so the known-failing cases can return early.
+    androidComponents.beforeVariants(androidComponents.selector().withBuildType("runTests")) { builder ->
+        (builder as com.android.build.api.variant.HasUnitTestBuilder).enableUnitTest = true
     }
 
     buildFeatures {
@@ -116,6 +141,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":rime"))
+
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
     implementation("androidx.recyclerview:recyclerview:1.4.0")

@@ -17,6 +17,16 @@ buildscript {
 
 allprojects {
     repositories {
+        // Maven Central redirects this jar to a GitHub release, and that URL
+        // returns 504. The mirror hosts the jar itself.
+        exclusiveContent {
+            forRepository {
+                maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }
+            }
+            filter {
+                includeModule("org.jetbrains.kotlin", "kotlin-compiler-embeddable")
+            }
+        }
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }

@@ -1,6 +1,7 @@
 package helium314.keyboard.latin.suggestions
 
 import android.view.inputmethod.CompletionInfo
+import kotlin.jvm.JvmField
 import helium314.keyboard.latin.common.StringUtils
 import helium314.keyboard.latin.common.isEmoji
 import helium314.keyboard.latin.dictionary.Dictionary
@@ -50,6 +51,12 @@ data class SuggestedWordInfo(
 
     var debugString = ""
 
+    @JvmField
+    var mComment = ""
+
+    @JvmField
+    var mCandidateIndex = NOT_AN_INDEX
+
     val isEligibleForAutoCommit: Boolean
         get() = (isKindOf(KIND_CORRECTION) && NOT_AN_INDEX != indexOfTouchPointOfSecondWord)
 
@@ -95,6 +102,7 @@ data class SuggestedWordInfo(
         // in java for re-correction)
         const val KIND_RESUMED = 9
         const val KIND_OOV_CORRECTION = 10 // Most probable string correction
+        const val KIND_RIME = 11 // librime candidate on the current page
 
         const val KIND_FLAG_POSSIBLY_OFFENSIVE = -0x80000000
         const val KIND_FLAG_EXACT_MATCH = 0x40000000

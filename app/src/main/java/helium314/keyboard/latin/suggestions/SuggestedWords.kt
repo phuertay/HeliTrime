@@ -7,6 +7,7 @@ package helium314.keyboard.latin.suggestions
 
 import android.view.inputmethod.CompletionInfo
 import helium314.keyboard.latin.InputStyle
+import kotlin.jvm.JvmField
 import helium314.keyboard.latin.define.DebugFlags
 
 open class SuggestedWords(
@@ -24,6 +25,11 @@ open class SuggestedWords(
     /** Sequence number for auto-commit */
     val sequenceNumber: Int
 ) : Collection<SuggestedWordInfo> {
+    @JvmField
+    var mRimePageNo = 0
+
+    @JvmField
+    var mRimeLastPage = true
     override fun isEmpty() = suggestedWordInfoList.isEmpty()
 
     override val size = suggestedWordInfoList.size

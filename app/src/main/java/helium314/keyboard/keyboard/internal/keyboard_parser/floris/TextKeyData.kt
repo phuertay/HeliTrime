@@ -21,6 +21,7 @@ import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode.check
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyLabel.convertFlorisLabel
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyLabel.rtlLabel
 import helium314.keyboard.latin.RichInputMethodManager
+import helium314.keyboard.latin.pinyin.commaOffersScriptToggle
 import helium314.keyboard.latin.common.Constants
 import helium314.keyboard.latin.common.LocaleUtils.constructLocale
 import helium314.keyboard.latin.common.StringUtils
@@ -97,6 +98,13 @@ sealed interface KeyData : AbstractKeyData {
         //  keys could be replaced with toolbar keys, but parsing needs to be adjusted (should happen anyway...)
         private fun getCommaPopupKeys(params: KeyboardParams): List<String> {
             val keys = mutableListOf<String>()
+            if (commaOffersScriptToggle(
+                    params.mId.subtype.hasExtraValue(Constants.Subtype.ExtraValue.RIME_SCHEMA),
+                    params.mId.inputType,
+            )) {
+                keys.add(Key.POPUP_KEYS_HAS_LABELS)
+                keys.add("简/繁|!code/key_rime_script")
+            }
             if (!params.mId.deviceLocked)
                 keys.add("!icon/clipboard_normal_key|!code/key_clipboard")
             if (!params.mId.emojiKeyEnabled && !params.mId.element.isNumberLayout)
