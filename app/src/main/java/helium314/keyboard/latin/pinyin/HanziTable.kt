@@ -11,6 +11,8 @@ interface HanziIndex {
     fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int): List<Int>
     fun common(): IntArray
     fun radicalLabel(radical: Int, simplified: Boolean): String
+    /** Toned syllable, or empty when this character has none. */
+    fun reading(codePoint: Int): String = ""
 }
 
 object EmptyHanzi : HanziIndex {
@@ -29,6 +31,7 @@ class HanziTable private constructor(
     private val strokes: IntArray,
     private val toSimplified: Map<Int, Int>,
     private val toTraditional: Map<Int, IntArray>,
+    private val readings: Array<String>,
 ) : HanziIndex {
     override fun radical(codePoint: Int): Int {
         val index = indexOf(codePoint)
@@ -44,6 +47,11 @@ class HanziTable private constructor(
 
     override fun radicalLabel(radical: Int, simplified: Boolean): String {
         return if (radical == 0) "" else Character.toString(radical)
+    }
+
+    override fun reading(codePoint: Int): String {
+        val index = indexOf(codePoint)
+        return if (index < 0) "" else readings[index]
     }
 
     override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int): List<Int> {
@@ -139,7 +147,28 @@ class HanziTable private constructor(
                 for (form in 0 until count) forms[form] = buffer.u16()
                 toTraditional[simple] = forms
             }
-            return HanziTable(codes, radicals, strokeAt, strokeLen, strokes, toSimplified, toTraditional)
+            return HanziTable(
+                codes, radicals, strokeAt, strokeLen, strokes, toSimplified, toTraditional,
+                readReadings(buffer, charCount),
+            )
+        }
+
+        /** RDG1 trailer. Older tables have no trailer and every reading is empty. */
+        private fun readReadings(buffer: ByteBuffer, charCount: Int): Array<String> {
+            val empty = Array(charCount) { "" }
+            if (buffer.remaining() < 6) return empty
+            val mark = ByteArray(4)
+            buffer.get(mark)
+            if (!mark.contentEquals(byteArrayOf('R'.code.toByte(), 'D'.code.toByte(), 'G'.code.toByte(), '1'.code.toByte()))) {
+                return empty
+            }
+            if (buffer.u16() != charCount) return empty
+            return Array(charCount) {
+                val length = buffer.get().toInt() and 0xff
+                val bytes = ByteArray(length)
+                buffer.get(bytes)
+                String(bytes, Charsets.UTF_8)
+            }
         }
     }
 }

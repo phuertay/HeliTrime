@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Distill Make Me a Hanzi medians into app/src/main/assets/rime/hanzi_lookup.bin.
 
+The RDG1 trailer is one toned syllable per character, the first pinyin listing.
+
 The packing matches HanziStroke.packStroke: y grows downward.
 graphics.txt is not shipped. The Arphic license is copied next to the table.
 """
@@ -56,6 +58,15 @@ def pack(points, box):
     return direction | (bucket << 3) | (quadrant << 5) | ((cell_y * 3 + cell_x) << 7)
 
 
+def first_syllable(pinyin):
+    if not isinstance(pinyin, list) or not pinyin:
+        return ""
+    syllable = pinyin[0]
+    if not isinstance(syllable, str):
+        return ""
+    return syllable.strip()
+
+
 def load_maps(path):
     out = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -76,13 +87,19 @@ def main():
     ts = load_maps(fetch(TS, "TSCharacters.txt"))
 
     radicals = {}
+    # First listing only. 行 is xíng here, and 了 is the neutral le.
+    readings = {}
     for line in dictionary.read_text(encoding="utf-8").splitlines():
         if not line:
             continue
         row = json.loads(line)
+        code = ord(row["character"])
         radical = row.get("radical") or ""
         if radical:
-            radicals[ord(row["character"])] = ord(radical[0])
+            radicals[code] = ord(radical[0])
+        syllable = first_syllable(row.get("pinyin"))
+        if syllable:
+            readings[code] = syllable
 
     chars = []
     for line in graphics.read_text(encoding="utf-8").splitlines():
@@ -110,7 +127,10 @@ def main():
         code = ord(row["character"])
         if code > 0xFFFF:
             continue
-        chars.append((code, radicals.get(code, 0) if radicals.get(code, 0) <= 0xFFFF else 0, packed))
+        radical = radicals.get(code, 0)
+        if radical > 0xFFFF:
+            radical = 0
+        chars.append((code, radical, packed, readings.get(code, "")))
         if row["character"] in ("一", "丨"):
             print(row["character"], strokes[0][0], strokes[0][-1], "dir", packed[0] & 7, flush=True)
     chars.sort(key=lambda item: item[0])
@@ -135,10 +155,10 @@ def main():
     many.sort()
     blob += struct.pack("<IHH", stroke_count, len(pairs), len(many))
     offset = 0
-    for code, radical, packed in chars:
+    for code, radical, packed, _reading in chars:
         blob += struct.pack("<HHIH", code, radical, offset, len(packed))
         offset += len(packed)
-    for _, _, packed in chars:
+    for _, _, packed, _reading in chars:
         for value in packed:
             blob += struct.pack("<H", value)
     for trad, simple in pairs:
@@ -147,6 +167,12 @@ def main():
         blob += struct.pack("<HB", simple, len(trads))
         for trad in trads:
             blob += struct.pack("<H", trad)
+    blob += b"RDG1"
+    blob += struct.pack("<H", len(chars))
+    for _, _, _, reading in chars:
+        raw = reading.encode("utf-8")
+        blob += struct.pack("<B", len(raw))
+        blob += raw
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "hanzi_lookup.bin").write_bytes(blob)
     (OUT / "LICENSE-arphic.txt").write_bytes(license_path.read_bytes())

@@ -122,32 +122,86 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     /** Every candidate. A window of rows rebuilt during the drag ate the scroll. */
     private fun bindGrid() {
         grid.removeAllViews()
-        val columns = if (model.pad) 4 else 8
         val rows = model.rows
         if (rows.isEmpty()) return
-        var line: LinearLayout? = null
-        rows.forEachIndexed { index, item ->
-            if (index % columns == 0) {
-                line = LinearLayout(context).also {
-                    it.orientation = HORIZONTAL
-                    grid.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-                }
+        // The writing pad takes half the width and half the columns, so a character stays the same size.
+        val columns = if (model.pad) 4 else 8
+        var line = newLine()
+        var used = 0
+        for (item in rows) {
+            val span = lookupSpan(item.text, columns)
+            if (used + span > columns) {
+                padLine(line, columns - used)
+                line = newLine()
+                used = 0
             }
-            val cell = text(item.text, 20f)
-            cell.gravity = Gravity.CENTER
-            cell.background = face(ColorType.KEY_BACKGROUND)
-            cell.layoutParams = LayoutParams(0, dp(44), 1f).apply {
+            val cell = candidate(item)
+            cell.layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, span.toFloat()).apply {
                 setMargins(dp(2), dp(2), dp(2), dp(2))
             }
-            pickTarget(cell, item)
-            line!!.addView(cell)
+            line.addView(cell)
+            used += span
         }
-        val remainder = rows.size % columns
-        if (remainder != 0 && line != null) {
-            repeat(columns - remainder) {
-                line!!.addView(View(context), LayoutParams(0, dp(44), 1f))
-            }
+        padLine(line, columns - used)
+    }
+
+    private fun newLine(): LinearLayout {
+        val line = LinearLayout(context)
+        line.orientation = HORIZONTAL
+        grid.addView(line, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        return line
+    }
+
+    private fun padLine(line: LinearLayout, rest: Int) {
+        if (rest <= 0) return
+        line.addView(View(context), LayoutParams(0, dp(48), rest.toFloat()))
+    }
+
+    /** One column per character, syllable under the hanzi. A word takes one column per character. */
+    private fun candidate(item: LookupRow): LinearLayout {
+        val cell = LinearLayout(context)
+        cell.orientation = HORIZONTAL
+        cell.gravity = Gravity.CENTER_VERTICAL
+        cell.background = face(ColorType.KEY_BACKGROUND)
+        var offset = 0
+        var index = 0
+        while (offset < item.text.length) {
+            val end = offset + Character.charCount(item.text.codePointAt(offset))
+            cell.addView(
+                glyph(item.text.substring(offset, end), item.readings.getOrElse(index) { "" }),
+                LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f),
+            )
+            offset = end
+            index++
         }
+        if (offset == 0) cell.addView(glyph("", ""), LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        pickTarget(cell, item)
+        return cell
+    }
+
+    private fun glyph(hanzi: String, reading: String): LinearLayout {
+        val column = LinearLayout(context)
+        column.orientation = VERTICAL
+        column.gravity = Gravity.CENTER_HORIZONTAL
+        column.setPadding(0, dp(2), 0, dp(2))
+        column.addView(text(hanzi, 20f))
+        column.addView(readingLabel(reading))
+        return column
+    }
+
+    /** Latin face. The hanzi face does not carry the tone marks. */
+    private fun readingLabel(reading: String): TextView {
+        val view = TextView(context)
+        view.text = reading
+        view.gravity = Gravity.CENTER
+        view.isFocusable = false
+        view.isFocusableInTouchMode = false
+        view.setSingleLine(true)
+        view.typeface = Typeface.DEFAULT
+        view.setTextColor(Settings.getValues().mColors.get(ColorType.KEY_TEXT))
+        view.alpha = 0.75f
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+        return view
     }
 
     private fun bindButtons() {
