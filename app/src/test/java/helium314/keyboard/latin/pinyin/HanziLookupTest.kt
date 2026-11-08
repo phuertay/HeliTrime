@@ -160,6 +160,9 @@ class HanziLookupTest {
         assertEquals("le", hanzi.reading('了'.code))
         assertEquals("yī", hanzi.reading('一'.code))
         assertEquals("", hanzi.reading('?'.code))
+        val whole = inkFeatures(listOf(floatArrayOf(80f, 400f, 720f, 420f)))
+        val hits = hanzi.rank(whole, hanzi.common(), true, 0)
+        assertTrue(hits.isNotEmpty())
     }
 
     @Test

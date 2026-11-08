@@ -58,6 +58,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     private val buttons = LinearLayout(context)
     private var model = LookupModel(emptyList(), emptyList(), 0, false, false, true, false, emptyList())
     private var gridColumns = -1
+    private var buttonKey = ""
     private val scrollChips: HorizontalScrollView
     private val body: LinearLayout
 
@@ -108,6 +109,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         ink.strokes = next.strokes
         ink.visibility = if (next.pad) VISIBLE else GONE
         bindButtons()
+    }
+
+    /** Already drawn. The candidate list can follow later. */
+    fun showStrokes(strokes: List<FloatArray>) {
+        ink.strokes = strokes
+        if (model.pad) ink.visibility = VISIBLE
     }
 
     /** 写, ×, and the pad controls. The strip hosts this row while 查 is open. */
@@ -254,6 +261,9 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     }
 
     private fun bindButtons() {
+        val key = buttonKey()
+        if (key == buttonKey && buttons.childCount > 0) return
+        buttonKey = key
         buttons.removeAllViews()
         if (!model.pad) button("写", { listener?.onDraw() })
         else {
@@ -264,6 +274,13 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             button("⌨", { listener?.onLeavePad() })
         }
         button("×", { listener?.onClose() })
+    }
+
+    private fun buttonKey(): String {
+        if (!model.pad) return "grid"
+        val widen = if (!model.hasSpelling) "" else if (model.widened) "全·开" else "全"
+        val script = if (model.simplified) "简" else "繁"
+        return "pad$widen$script"
     }
 
     /** A drag scrolls. A tap selects. Finger-down used to commit, so the list could not move. */
@@ -387,7 +404,6 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         var strokes: List<FloatArray> = emptyList()
             set(value) {
                 field = value
-                live = FloatArray(0)
                 invalidate()
             }
         private var live = FloatArray(0)
@@ -410,21 +426,40 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         override fun onTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> live = floatArrayOf(event.x, event.y)
-                MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+                MotionEvent.ACTION_MOVE -> live += floatArrayOf(event.x, event.y)
+                MotionEvent.ACTION_UP -> {
                     live += floatArrayOf(event.x, event.y)
-                    if (event.actionMasked == MotionEvent.ACTION_UP && live.size >= 4) {
-                        listener?.onStroke(live)
-                    }
+                    val done = live
+                    live = FloatArray(0)
+                    val normalized = normalize(done)
+                    if (normalized.size >= 4) listener?.onStroke(normalized)
                 }
+                MotionEvent.ACTION_CANCEL -> live = FloatArray(0)
             }
             invalidate()
             return true
         }
 
+        /** 0..1000 of this view. A later resize redraws the same stroke inside the new box. */
+        private fun normalize(points: FloatArray): FloatArray {
+            val sx = width.toFloat().coerceAtLeast(1f)
+            val sy = height.toFloat().coerceAtLeast(1f)
+            val out = FloatArray(points.size)
+            var index = 0
+            while (index + 1 < points.size) {
+                out[index] = points[index] / sx * INK_UNITS
+                out[index + 1] = points[index + 1] / sy * INK_UNITS
+                index += 2
+            }
+            return out
+        }
+
         override fun onDraw(canvas: Canvas) {
             drawMiZhi(canvas)
-            drawAll(canvas, strokes)
-            if (live.size >= 4) drawOne(canvas, live)
+            val sx = width.toFloat() / INK_UNITS
+            val sy = height.toFloat() / INK_UNITS
+            drawAll(canvas, strokes, sx, sy)
+            if (live.size >= 4) drawOne(canvas, live, 1f, 1f)
         }
 
         /** 米字格: square, cross, both diagonals. Fills the writing view, which is already the tall square. */
@@ -449,16 +484,16 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             canvas.drawLine(right, top, left, bottom, guide)
         }
 
-        private fun drawAll(canvas: Canvas, all: List<FloatArray>) {
-            for (stroke in all) drawOne(canvas, stroke)
+        private fun drawAll(canvas: Canvas, all: List<FloatArray>, sx: Float, sy: Float) {
+            for (stroke in all) drawOne(canvas, stroke, sx, sy)
         }
 
-        private fun drawOne(canvas: Canvas, stroke: FloatArray) {
+        private fun drawOne(canvas: Canvas, stroke: FloatArray, sx: Float, sy: Float) {
             val path = Path()
-            path.moveTo(stroke[0], stroke[1])
+            path.moveTo(stroke[0] * sx, stroke[1] * sy)
             var i = 2
             while (i + 1 < stroke.size) {
-                path.lineTo(stroke[i], stroke[i + 1])
+                path.lineTo(stroke[i] * sx, stroke[i + 1] * sy)
                 i += 2
             }
             canvas.drawPath(path, paint)
@@ -507,6 +542,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     companion object {
         const val TAG = "hanzi_lookup"
         const val INK_TAG = "hanzi_ink"
+        private const val INK_UNITS = 1000f
 
         /** Simplified Chinese face. Index 2 is SC in Noto CJK and in Samsung's SEC CJK collection. */
         private fun loadSystemCjkFaces(): List<Typeface> {

@@ -248,6 +248,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     fun showLookupActions(bar: View) {
         lookupActions = bar
+        if (bar.parent === suggestionsStrip) return
         placeLookupActions()
     }
 
@@ -272,7 +273,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     fun setSuggestions(suggestions: SuggestedWords, isRtlLanguage: Boolean) {
         if (lookupActions != null) {
-            placeLookupActions()
+            if (lookupActions?.parent !== suggestionsStrip) placeLookupActions()
             return
         }
         clear()

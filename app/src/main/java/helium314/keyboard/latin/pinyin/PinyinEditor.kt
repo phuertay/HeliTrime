@@ -25,6 +25,9 @@ interface PinyinUi {
     fun onModeChanged(label: String)
     fun showLookup(model: LookupModel) {}
     fun hideLookup() {}
+
+    /** Strokes already drawn. Ranking the whole table must not wait before these show. */
+    fun showInk(strokes: List<FloatArray>) {}
 }
 
 fun interface PinyinStarter {

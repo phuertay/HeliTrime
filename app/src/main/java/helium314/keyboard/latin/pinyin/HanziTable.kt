@@ -62,7 +62,9 @@ class HanziTable private constructor(
             if (index < 0) continue
             if (radical != 0 && radicals[index] != radical) continue
             val start = strokeAt[index]
-            val model = strokes.copyOfRange(start, start + strokeLen[index])
+            val length = strokeLen[index]
+            if (length <= 0 || start < 0 || start > strokes.size - length) continue
+            val model = strokes.copyOfRange(start, start + length)
             val score = matchScore(ink, model)
             if (score != Int.MIN_VALUE) hits.add(codePoint to score)
         }

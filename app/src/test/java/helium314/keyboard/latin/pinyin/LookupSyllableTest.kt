@@ -1,5 +1,6 @@
 package helium314.keyboard.latin.pinyin
 
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -11,6 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -45,6 +47,48 @@ class LookupSyllableTest {
         val panel = LookupPanel(context)
         panel.setModel(model(pad = false, LookupRow("语", 0, 0, listOf("yǔ"))))
         assertSyllableClearsTheCharacter(panel, "语", "yǔ")
+    }
+
+    @Test
+    fun twoStrokesStayAndTheSameButtonsStillFire() {
+        val context = ApplicationProvider.getApplicationContext<App>()
+        val panel = LookupPanel(context)
+        panel.setModel(LookupModel(emptyList(), emptyList(), 0, true, false, true, false, emptyList()))
+        layOut(panel, 1080, 800)
+        val drawn = ArrayList<FloatArray>()
+        var undos = 0
+        panel.listener = object : LookupListener {
+            override fun onClose() {}
+            override fun onPress(row: LookupRow) {}
+            override fun onPick(row: LookupRow) {}
+            override fun onRadical(radical: Int) {}
+            override fun onDraw() {}
+            override fun onLeavePad() {}
+            override fun onStroke(points: FloatArray) { drawn.add(points.copyOf()) }
+            override fun onUndo() { undos++ }
+            override fun onClear() {}
+            override fun onWiden() {}
+            override fun onScript() {}
+        }
+        val ink = find(panel) { it.tag == LookupPanel.INK_TAG } ?: error("ink")
+        fun stroke(y: Float) {
+            ink.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 80f, y, 0))
+            ink.dispatchTouchEvent(MotionEvent.obtain(0, 16, MotionEvent.ACTION_UP, 700f, y, 0))
+        }
+        stroke(120f)
+        panel.showStrokes(drawn.toList())
+        stroke(480f)
+        panel.showStrokes(drawn.toList())
+        assertEquals(2, drawn.size)
+        assertTrue(drawn[0][0] in 0f..1000f && drawn[0][2] > drawn[0][0])
+        val undo = (panel.actionBar() as ViewGroup).getChildAt(0)
+        panel.setModel(LookupModel(
+            listOf(LookupRow("人", -1, -1, listOf("rén"))),
+            emptyList(), 0, true, false, true, false, drawn.toList(),
+        ))
+        assertSame(undo, (panel.actionBar() as ViewGroup).getChildAt(0))
+        undo.dispatchTouchEvent(MotionEvent.obtain(0, 30, MotionEvent.ACTION_DOWN, 4f, 4f, 0))
+        assertEquals(1, undos)
     }
 
     @Test

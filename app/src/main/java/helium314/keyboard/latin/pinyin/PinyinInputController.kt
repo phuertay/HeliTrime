@@ -42,6 +42,8 @@ class PinyinInputController(
     private var menuFor: String? = null
     private var shownSnapshot: RimeSnapshot? = null
     private var menuGeneration = 0
+    @Volatile private var lookupGeneration = 0
+    private val lookupLock = Any()
     private val pending = ArrayList<PendingKey>()
 
     fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
@@ -304,7 +306,7 @@ class PinyinInputController(
 
     fun onLookupStroke(points: FloatArray) {
         if (!padOpen || points.size < 4) return
-        ink.add(points)
+        ink.add(points.copyOf())
         publishLookup()
     }
 
@@ -571,9 +573,41 @@ class PinyinInputController(
     }
 
     private fun publishLookup() {
-        ui.showLookup(buildLookup(
-            menu, ink, hanzi, simplified, radical, padOpen, widened, hasPreedit,
-        ))
+        val generation = ++lookupGeneration
+        if (ink.isEmpty()) {
+            ui.showLookup(buildLookup(
+                menu, emptyList(), hanzi, simplified, radical, padOpen, widened, hasPreedit,
+            ))
+            return
+        }
+        // No spelling ranks every character. Show the line first. A late score for an older
+        // line must not replace the strokes drawn since.
+        val inkNow = ink.map { it.copyOf() }
+        val menuNow = menu
+        val simplifiedNow = simplified
+        val radicalNow = radical
+        val padNow = padOpen
+        val widenedNow = widened
+        val spellingNow = hasPreedit
+        ui.showInk(inkNow)
+        starter.start {
+            synchronized(lookupLock) {
+                if (generation != lookupGeneration) return@start
+                val model = try {
+                    buildLookup(
+                        menuNow, inkNow, hanzi, simplifiedNow, radicalNow, padNow, widenedNow, spellingNow,
+                    )
+                } catch (_: RuntimeException) {
+                    buildLookup(
+                        menuNow, emptyList(), hanzi, simplifiedNow, radicalNow, padNow, widenedNow, spellingNow,
+                    ).copy(strokes = inkNow)
+                }
+                deliver {
+                    if (generation != lookupGeneration || !lookupOpen) return@deliver
+                    ui.showLookup(model)
+                }
+            }
+        }
     }
 
     private fun closeLookup(restoreStrip: Boolean = true) {

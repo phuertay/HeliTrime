@@ -25,6 +25,7 @@ import kotlin.test.assertTrue
 class PinyinInputControllerTest {
     private var lookupRows: List<LookupRow> = emptyList()
     private var lookupPad = false
+    private var lookupStrokes = 0
     private var strip = ""
 
     @Test
@@ -251,6 +252,44 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun drawingWithNoLettersKeepsEveryStrokeUntilTheScoreReturns() {
+        val queued = ArrayList<() -> Unit>()
+        val controller = controller(
+            FakeRimeClient(),
+            FakeEditor(),
+            hanzi = object : HanziIndex {
+                override fun radical(codePoint: Int) = 0
+                override fun strokeCount(codePoint: Int) = 0
+                override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) =
+                    listOf('人'.code)
+                override fun common() = intArrayOf('人'.code)
+                override fun radicalLabel(radical: Int, simplified: Boolean) = ""
+            },
+            starter = PinyinStarter { queued.add(it) },
+        )
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        while (queued.isNotEmpty()) queued.removeAt(0).invoke()
+        controller.onOpenLookup()
+        assertTrue(lookupPad)
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        assertEquals(1, lookupStrokes)
+        controller.onLookupStroke(floatArrayOf(0f, 8f, 0f, 40f))
+        assertEquals(2, lookupStrokes)
+        assertEquals(2, queued.size)
+        queued.removeAt(0).invoke()
+        assertEquals(2, lookupStrokes)
+        queued.removeAt(0).invoke()
+        assertEquals(2, lookupStrokes)
+        assertEquals(listOf("人"), lookupRows.map { it.text })
+        controller.onUndoStroke()
+        assertEquals(1, lookupStrokes)
+        queued.removeAt(0).invoke()
+        assertEquals(1, lookupStrokes)
+        controller.onClearInk()
+        assertEquals(0, lookupStrokes)
+    }
+
+    @Test
     fun padSpaceStaysPutAndAnOutsideCharacterDropsTheSpelling() {
         val client = FakeRimeClient()
         val editor = FakeEditor()
@@ -379,6 +418,7 @@ class PinyinInputControllerTest {
         editor: FakeEditor,
         script: PinyinScriptStore = MemoryScriptStore(),
         hanzi: HanziIndex = EmptyHanzi,
+        starter: PinyinStarter = PinyinStarter { it() },
     ): PinyinInputController {
         return PinyinInputController(
             client = client,
@@ -392,11 +432,15 @@ class PinyinInputControllerTest {
                 override fun showLookup(model: LookupModel) {
                     lookupRows = model.rows
                     lookupPad = model.pad
+                    lookupStrokes = model.strokes.size
+                }
+                override fun showInk(strokes: List<FloatArray>) {
+                    lookupStrokes = strokes.size
                 }
             },
             preparingText = "Preparing pinyin",
             failureText = "Pinyin failed to load",
-            starter = PinyinStarter { it() },
+            starter = starter,
             deliver = { it() },
             script = script,
             hanzi = hanzi,

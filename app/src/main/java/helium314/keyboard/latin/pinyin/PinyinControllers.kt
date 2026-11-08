@@ -72,6 +72,9 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
             panel.bringToFront()
             ime.showPinyinLookupActions(panel.actionBar())
         }
+        override fun showInk(strokes: List<FloatArray>) {
+            ime.pinyinLookupPanel()?.showStrokes(strokes)
+        }
         override fun hideLookup() {
             ime.hidePinyinLookupActions()
             ime.pinyinLookupPanel()?.visibility = View.GONE
