@@ -155,7 +155,139 @@ class HanziLookupTest {
         assertEquals('言'.code, hanzi.radical('語'.code))
         assertEquals("讠", hanzi.radicalLabel(hanzi.radical('语'.code), true))
         assertEquals("言", hanzi.radicalLabel(hanzi.radical('語'.code), false))
+        assertEquals("nǐ", hanzi.reading('你'.code))
+        assertEquals("hǎo", hanzi.reading('好'.code))
+        assertEquals("le", hanzi.reading('了'.code))
+        assertEquals("yī", hanzi.reading('一'.code))
+        assertEquals("", hanzi.reading('?'.code))
+        val whole = inkFeatures(listOf(floatArrayOf(80f, 400f, 720f, 420f)))
+        val hits = hanzi.rank(whole, hanzi.common(), true, 0)
+        assertTrue(hits.isNotEmpty())
     }
+
+    @Test
+    fun eachCharacterKeepsItsSyllableOnTheGridAndThePad() {
+        val hanzi = object : HanziIndex by TinyHanzi {
+            override fun reading(codePoint: Int) = when (codePoint) {
+                '你'.code -> "nǐ"
+                '好'.code -> "hǎo"
+                '语'.code -> "yǔ"
+                '人'.code -> "rén"
+                else -> ""
+            }
+        }
+        val menu = listOf(MenuChar("你好", 0, 0), MenuChar("语", 0, 1))
+        val grid = buildLookup(menu, emptyList(), hanzi, true, 0, false, false, true)
+        assertEquals(listOf("nǐ", "hǎo"), grid.rows[0].readings)
+        assertEquals(listOf("yǔ"), grid.rows[1].readings)
+        assertEquals(2, lookupSpan("你好", 8))
+        assertEquals(1, lookupSpan("语", 8))
+        val ink = listOf(floatArrayOf(0f, 0f, 10f, 10f))
+        val pad = buildLookup(menu, ink, hanzi, true, 0, true, true, true)
+        assertEquals(listOf("rén"), pad.rows.first { it.text == "人" }.readings)
+        assertEquals(1, lookupSpan("人", 4))
+        assertEquals(4, lookupSpan("中华人民共和国", 4))
+    }
+
+    @Test
+    fun aStrokeInTheMiddleBeatsTheSameStrokeAtTheTop() {
+        val square = arrayOf(0f, 0f, INK_SQUARE, INK_SQUARE)
+        val middle = packStroke(floatArrayOf(120f, 500f, 900f, 520f), square[0], square[1], square[2], square[3])
+        val top = packStroke(floatArrayOf(120f, 40f, 900f, 60f), square[0], square[1], square[2], square[3])
+        assertTrue(matchScore(intArrayOf(middle), intArrayOf(middle)) > matchScore(intArrayOf(top), intArrayOf(middle)))
+    }
+
+    @Test
+    fun aHookBeatsAStraightLineAgainstAHook() {
+        val straight = packStroke(floatArrayOf(100f, 400f, 500f, 400f, 900f, 420f), 0f, 0f, INK_SQUARE, INK_SQUARE)
+        val hook = packStroke(floatArrayOf(100f, 200f, 500f, 220f, 520f, 800f), 0f, 0f, INK_SQUARE, INK_SQUARE)
+        assertEquals(0, straight and (1 shl 14))
+        assertTrue(hook and (1 shl 14) != 0)
+        assertTrue(matchScore(intArrayOf(hook), intArrayOf(hook)) > matchScore(intArrayOf(straight), intArrayOf(hook)))
+    }
+
+    @Test
+    fun frequencyBreaksATieAndARememberedCharacterGoesFirst() {
+        val feature = packStroke(floatArrayOf(120f, 500f, 900f, 520f), 0f, 0f, INK_SQUARE, INK_SQUARE)
+        val rare = '丁'.code
+        val common = '七'.code
+        val hanzi = tableWithFrequency(intArrayOf(rare, common), intArrayOf(feature, feature), intArrayOf(0, 255))
+        val ink = intArrayOf(feature)
+        val pool = intArrayOf(rare, common)
+        assertEquals(common, hanzi.rank(ink, pool, true, 0).first())
+        val file = java.io.File.createTempFile("ink", ".txt")
+        val memory = HandwritingMemory(file)
+        memory.remember(Character.toString(rare))
+        assertEquals(HandwritingMemory.BONUS, memory.bonus(rare))
+        memory.learning = false
+        memory.remember(Character.toString(common))
+        assertEquals(0, memory.bonus(common))
+        HandwritingMemory.active = HandwritingMemory(file)
+        try {
+            assertEquals(rare, hanzi.rank(ink, pool, true, 0).first())
+        } finally {
+            HandwritingMemory.active = HandwritingMemory.NONE
+        }
+    }
+
+    @Test
+    fun aFlatStrokeAcrossTheMiddlePicksYi() {
+        val file = listOf(
+            java.io.File("src/main/assets/rime/hanzi_lookup.bin"),
+            java.io.File("app/src/main/assets/rime/hanzi_lookup.bin"),
+        ).firstOrNull { it.isFile } ?: error("hanzi_lookup.bin missing")
+        val hanzi = HanziTable.decode(file.readBytes())
+        val across = inkFeatures(listOf(floatArrayOf(120f, 500f, 900f, 520f)))
+        assertEquals('一'.code, hanzi.rank(across, hanzi.common(), true, 0).first())
+    }
+
+    @Test
+    fun readingTrailerRoundTripsOneSyllable() {
+        val bytes = java.nio.ByteBuffer.allocate(64).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        bytes.put("HZL1".toByteArray())
+        bytes.putShort(1)
+        bytes.putShort(1)
+        bytes.putInt(0)
+        bytes.putShort(0)
+        bytes.putShort(0)
+        bytes.putShort('你'.code.toShort())
+        bytes.putShort(0)
+        bytes.putInt(0)
+        bytes.putShort(0)
+        bytes.put("RDG1".toByteArray())
+        bytes.putShort(1)
+        val syllable = "nǐ".toByteArray()
+        bytes.put(syllable.size.toByte())
+        bytes.put(syllable)
+        val hanzi = HanziTable.decode(bytes.array().copyOf(bytes.position()))
+        assertEquals("nǐ", hanzi.reading('你'.code))
+    }
+}
+
+private fun tableWithFrequency(codes: IntArray, strokes: IntArray, frequency: IntArray): HanziIndex {
+    val buffer = java.nio.ByteBuffer.allocate(64 + strokes.size * 2 + frequency.size).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    buffer.put("HZL1".toByteArray())
+    buffer.putShort(1)
+    buffer.putShort(codes.size.toShort())
+    buffer.putInt(strokes.size)
+    buffer.putShort(0)
+    buffer.putShort(0)
+    var offset = 0
+    for (index in codes.indices) {
+        buffer.putShort(codes[index].toShort())
+        buffer.putShort(0)
+        buffer.putInt(offset)
+        buffer.putShort(1)
+        offset += 1
+    }
+    for (stroke in strokes) buffer.putShort(stroke.toShort())
+    buffer.put("RDG1".toByteArray())
+    buffer.putShort(codes.size.toShort())
+    repeat(codes.size) { buffer.put(0) }
+    buffer.put("FRQ1".toByteArray())
+    buffer.putShort(codes.size.toShort())
+    for (value in frequency) buffer.put(value.toByte())
+    return HanziTable.decode(buffer.array().copyOf(buffer.position()))
 }
 
 private object OnlyJi : HanziIndex {

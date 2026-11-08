@@ -70,8 +70,13 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
             panel.setModel(model)
             panel.visibility = View.VISIBLE
             panel.bringToFront()
+            ime.showPinyinLookupActions(panel.actionBar())
+        }
+        override fun showInk(strokes: List<FloatArray>) {
+            ime.pinyinLookupPanel()?.showStrokes(strokes)
         }
         override fun hideLookup() {
+            ime.hidePinyinLookupActions()
             ime.pinyinLookupPanel()?.visibility = View.GONE
         }
     }
@@ -84,8 +89,12 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         failureText = ime.getString(R.string.pinyin_load_failed),
         starter = PinyinStarter { block -> thread(name = "rime-start", isDaemon = true) { block() } },
         deliver = { block -> main.post(block) },
+        later = { delay, block -> main.postDelayed(block, delay) },
         script = PrefScriptStore(ime.prefs()),
         hanzi = HanziTable.open(ime.applicationContext),
+        inkMemory = HandwritingMemory(java.io.File(ime.filesDir, "rime/user/ink.txt")).also {
+            HandwritingMemory.active = it
+        },
     )
     box[0] = controller
     return controller
@@ -107,7 +116,7 @@ private class ControllerLookup(
     override fun onScript() = controller().onLookupScript()
 }
 
-/** Comma long-press offers 简/繁 on a pinyin subtype. Password, email, and URI stay 英文. */
+/** Comma long-press offers 简/繁 on a pinyin subtype. Password, email, and URI stay latin. */
 fun commaOffersScriptToggle(hasRimeSchema: Boolean, inputType: Int): Boolean =
     hasRimeSchema && !editorForcesAscii(inputType)
 

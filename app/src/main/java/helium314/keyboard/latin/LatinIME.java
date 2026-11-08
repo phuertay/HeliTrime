@@ -152,6 +152,14 @@ public class LatinIME extends InputMethodService implements
         return mLookupPanel;
     }
 
+    public void showPinyinLookupActions(final View bar) {
+        if (hasSuggestionStripView()) mSuggestionStripView.showLookupActions(bar);
+    }
+
+    public void hidePinyinLookupActions() {
+        if (hasSuggestionStripView()) mSuggestionStripView.hideLookupActions();
+    }
+
     public boolean pinyinSymbolsLayer() {
         final Keyboard keyboard = mKeyboardSwitcher.getKeyboard();
         if (keyboard == null) return false;
@@ -1641,7 +1649,8 @@ public class LatinIME extends InputMethodService implements
 
     private void refreshRimeLookupButton(final boolean rimeRow) {
         if (!hasSuggestionStripView()) return;
-        final boolean show = mPinyinController != null && mPinyinController.lookupAvailable() && !rimeRow;
+        final boolean show = mPinyinController != null && mPinyinController.lookupAvailable() && !rimeRow
+                && !mPinyinController.isLookupOpen();
         mSuggestionStripView.setRimeLookupButton(show);
     }
 

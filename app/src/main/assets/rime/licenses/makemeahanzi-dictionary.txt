@@ -1,0 +1,7 @@
+Syllables packed into hanzi_lookup.bin are the first pinyin listing from
+Make Me a Hanzi dictionary.txt.
+https://github.com/skishore/makemeahanzi
+
+dictionary.txt is derived from Unihan and CJKlib and is licensed under the
+GNU Lesser General Public License, version 3. The license text is
+rime-prelude-LICENSE in this directory.

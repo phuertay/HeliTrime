@@ -1,8 +1,9 @@
-name: Build debug APK
+name: Build release APK
 
 on:
   workflow_dispatch:
-  pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
@@ -32,35 +33,42 @@ jobs:
         run: bash tools/fetch_rime_sources.bash
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
 
-      # Actions artifacts are always zip files. A prerelease asset is the apk itself.
+      # The file Gradle writes is Helitrime_<version>-release.apk. The release
+      # asset is Helitrime_<version>.apk, the normal package, not a debug one.
       - name: Publish the apk
-        if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          apk=$(ls app/build/outputs/apk/debug/*-debug*.apk)
+          apk=$(ls app/build/outputs/apk/release/*-release*.apk)
           test -f "$apk"
-          name=$(basename "$apk")
-          tag="v${name#Helitrime_}"
-          tag="${tag%.apk}"
-          notes="Debug build ${RELEASE_SHA}. Download ${name} directly. It is not inside a zip."
+          version=$(basename "$apk")
+          version="${version#Helitrime_}"
+          version="${version%-release.apk}"
+          name="Helitrime_${version}.apk"
+          cp "$apk" "$name"
+          tag="v${version}"
+          notes=$(cat <<EOF | sed 's/^          //'
+          Normal build. Package helitrime001.keyboard. About says Version ${version}. versionCode 4305.
+
+          Signed with the checked-in debug key, so this replaces Helitrime 4.3-beta5. Uninstall 4.3-beta1 first if that older copy is still installed. It used a different key.
+
+          The debug package is no longer published.
+
+          Pinyin lookup shows one toned syllable under each character. Handwriting keeps every stroke, ranks a bend and where the stroke sits in the square, and prefers a common or previously picked character. The Cursor page in Firefox no longer closes an empty writing pad.
+
+          AI-assisted.
+          EOF
+          )
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$apk" --clobber
-            gh release edit "$tag" --notes "$notes" --target "$RELEASE_SHA" --prerelease
+            gh release upload "$tag" "$name" --clobber
+            gh release edit "$tag" --notes "$notes" --target "$RELEASE_SHA" --title "Helitrime ${version}" --latest
           else
-            gh release create "$tag" "$apk" --prerelease --target "$RELEASE_SHA" --title "Helitrime ${tag#v}" --notes "$notes"
+            gh release create "$tag" "$name" --target "$RELEASE_SHA" --title "Helitrime ${version}" --latest --notes "$notes"
           fi
           url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${name}"
-          echo "### Debug APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Release APK" >> "$GITHUB_STEP_SUMMARY"
           echo "[${name}](${url})" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Archive reports for failed job
-        uses: actions/upload-artifact@v4
-        with:
-          name: reports
-          path: '*/build/reports'
-        if: ${{ failure() }}

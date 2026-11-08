@@ -25,6 +25,7 @@ import kotlin.test.assertTrue
 class PinyinInputControllerTest {
     private var lookupRows: List<LookupRow> = emptyList()
     private var lookupPad = false
+    private var lookupStrokes = 0
     private var strip = ""
 
     @Test
@@ -136,7 +137,7 @@ class PinyinInputControllerTest {
         val controller = controller(client, editor)
         controller.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
         assertTrue(client.getOption("ascii_mode"))
-        assertEquals("英文", PinyinSpaceLabel.text)
+        assertEquals("中文·简", PinyinSpaceLabel.text)
         assertFalse(controller.onEvent('a'.code, 0, false))
         assertEquals("", editor.composing)
         assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI))
@@ -251,6 +252,44 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun drawingWithNoLettersKeepsEveryStrokeUntilTheScoreReturns() {
+        val queued = ArrayList<() -> Unit>()
+        val controller = controller(
+            FakeRimeClient(),
+            FakeEditor(),
+            hanzi = object : HanziIndex {
+                override fun radical(codePoint: Int) = 0
+                override fun strokeCount(codePoint: Int) = 0
+                override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) =
+                    listOf('人'.code)
+                override fun common() = intArrayOf('人'.code)
+                override fun radicalLabel(radical: Int, simplified: Boolean) = ""
+            },
+            starter = PinyinStarter { queued.add(it) },
+        )
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        while (queued.isNotEmpty()) queued.removeAt(0).invoke()
+        controller.onOpenLookup()
+        assertTrue(lookupPad)
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        assertEquals(1, lookupStrokes)
+        controller.onLookupStroke(floatArrayOf(0f, 8f, 0f, 40f))
+        assertEquals(2, lookupStrokes)
+        assertEquals(2, queued.size)
+        queued.removeAt(0).invoke()
+        assertEquals(2, lookupStrokes)
+        queued.removeAt(0).invoke()
+        assertEquals(2, lookupStrokes)
+        assertEquals(listOf("人"), lookupRows.map { it.text })
+        controller.onUndoStroke()
+        assertEquals(1, lookupStrokes)
+        queued.removeAt(0).invoke()
+        assertEquals(1, lookupStrokes)
+        controller.onClearInk()
+        assertEquals(0, lookupStrokes)
+    }
+
+    @Test
     fun padSpaceStaysPutAndAnOutsideCharacterDropsTheSpelling() {
         val client = FakeRimeClient()
         val editor = FakeEditor()
@@ -345,6 +384,71 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun globeLeavesTheSubtypeSwitchAndDoesNotOpenAnEnglishMode() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('j'.code, 0, false)
+        controller.onEvent('i'.code, 0, false)
+        assertFalse(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.LANGUAGE_SWITCH, false))
+        assertFalse(client.getOption("ascii_mode"))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
+        assertEquals("ji", editor.composing)
+        assertEquals("", editor.finishedText)
+
+        val locked = controller(FakeRimeClient(), FakeEditor())
+        locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
+        assertFalse(locked.onEvent(Event.NOT_A_CODE_POINT, KeyCode.LANGUAGE_SWITCH, false))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
+    }
+
+    @Test
+    fun emptyLookupKeepsTheStripAndSurvivesAFirefoxRestart() {
+        val pending = ArrayList<() -> Unit>()
+        val client = FakeRimeClient()
+        val controller = controller(client, FakeEditor(), later = { _, block -> pending.add(block) })
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertFalse(controller.shouldKeepStrip())
+        controller.onOpenLookup()
+        assertTrue(controller.shouldKeepStrip())
+        assertTrue(controller.isLookupOpen())
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        assertEquals(1, lookupStrokes)
+        controller.onFinishInput()
+        assertTrue(controller.isLookupOpen())
+        assertEquals(1, pending.size)
+        controller.onStartInput(keepSession = true, forceAscii = false, incognitoNow = false)
+        pending.removeAt(0).invoke()
+        assertTrue(controller.isLookupOpen())
+        assertEquals(1, lookupStrokes)
+        assertTrue(client.hasSession())
+        controller.onFinishInput()
+        pending.removeAt(0).invoke()
+        assertFalse(controller.isLookupOpen())
+        assertFalse(client.hasSession())
+    }
+
+    @Test
+    fun aDrawingPickIsRememberedUnlessIncognito() {
+        val file = java.io.File.createTempFile("ink-pick", ".txt")
+        val memory = HandwritingMemory(file)
+        val controller = controller(FakeRimeClient(), FakeEditor(), inkMemory = memory)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onOpenLookup()
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        controller.onLookupPick(LookupRow("人", -1, -1))
+        assertEquals(HandwritingMemory.BONUS, memory.bonus('人'.code))
+        val quiet = HandwritingMemory(file)
+        val hidden = controller(FakeRimeClient(), FakeEditor(), inkMemory = quiet)
+        hidden.onStartInput(keepSession = false, forceAscii = false, incognitoNow = true)
+        hidden.onOpenLookup()
+        hidden.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        hidden.onLookupPick(LookupRow("的", -1, -1))
+        assertEquals(0, quiet.bonus('的'.code))
+    }
+
+    @Test
     fun englishAndPasswordHideTheLookup() {
         val locked = controller(FakeRimeClient(), FakeEditor())
         locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
@@ -359,6 +463,9 @@ class PinyinInputControllerTest {
         editor: FakeEditor,
         script: PinyinScriptStore = MemoryScriptStore(),
         hanzi: HanziIndex = EmptyHanzi,
+        starter: PinyinStarter = PinyinStarter { it() },
+        later: (Long, () -> Unit) -> Unit = { _, block -> block() },
+        inkMemory: HandwritingMemory = HandwritingMemory.NONE,
     ): PinyinInputController {
         return PinyinInputController(
             client = client,
@@ -372,14 +479,20 @@ class PinyinInputControllerTest {
                 override fun showLookup(model: LookupModel) {
                     lookupRows = model.rows
                     lookupPad = model.pad
+                    lookupStrokes = model.strokes.size
+                }
+                override fun showInk(strokes: List<FloatArray>) {
+                    lookupStrokes = strokes.size
                 }
             },
             preparingText = "Preparing pinyin",
             failureText = "Pinyin failed to load",
-            starter = PinyinStarter { it() },
+            starter = starter,
             deliver = { it() },
             script = script,
             hanzi = hanzi,
+            later = later,
+            inkMemory = inkMemory,
         )
     }
 

@@ -11,6 +11,8 @@ interface HanziIndex {
     fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int): List<Int>
     fun common(): IntArray
     fun radicalLabel(radical: Int, simplified: Boolean): String
+    /** Toned syllable, or empty when this character has none. */
+    fun reading(codePoint: Int): String = ""
 }
 
 object EmptyHanzi : HanziIndex {
@@ -29,6 +31,8 @@ class HanziTable private constructor(
     private val strokes: IntArray,
     private val toSimplified: Map<Int, Int>,
     private val toTraditional: Map<Int, IntArray>,
+    private val readings: Array<String>,
+    private val frequency: IntArray,
 ) : HanziIndex {
     override fun radical(codePoint: Int): Int {
         val index = indexOf(codePoint)
@@ -46,6 +50,11 @@ class HanziTable private constructor(
         return if (radical == 0) "" else Character.toString(radical)
     }
 
+    override fun reading(codePoint: Int): String {
+        val index = indexOf(codePoint)
+        return if (index < 0) "" else readings[index]
+    }
+
     override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int): List<Int> {
         if (ink.isEmpty() || pool.isEmpty()) return emptyList()
         val hits = ArrayList<Pair<Int, Int>>(pool.size)
@@ -53,12 +62,19 @@ class HanziTable private constructor(
             val index = indexOf(codePoint)
             if (index < 0) continue
             if (radical != 0 && radicals[index] != radical) continue
+            val length = strokeLen[index]
+            // Most of the table is the wrong length. Skip it before copying the stroke data.
+            if (!strokeCountFits(ink.size, length)) continue
             val start = strokeAt[index]
-            val model = strokes.copyOfRange(start, start + strokeLen[index])
+            if (start < 0 || start > strokes.size - length) continue
+            val model = strokes.copyOfRange(start, start + length)
             val score = matchScore(ink, model)
-            if (score != Int.MIN_VALUE) hits.add(codePoint to score)
+            if (score == Int.MIN_VALUE) continue
+            // 0..3. A clear direction miss is 6, so this only reorders a near tie.
+            val nudge = if (frequency.isEmpty()) 0 else frequency[index] / 64
+            hits.add(codePoint to score + nudge)
         }
-        return collapseHits(hits, simplified, ::displayOf)
+        return collapseHits(hits, simplified, HandwritingMemory.active::bonus, ::displayOf)
     }
 
     fun displayOf(codePoint: Int, simplified: Boolean): Int {
@@ -139,7 +155,42 @@ class HanziTable private constructor(
                 for (form in 0 until count) forms[form] = buffer.u16()
                 toTraditional[simple] = forms
             }
-            return HanziTable(codes, radicals, strokeAt, strokeLen, strokes, toSimplified, toTraditional)
+            return HanziTable(
+                codes, radicals, strokeAt, strokeLen, strokes, toSimplified, toTraditional,
+                readReadings(buffer, charCount),
+                readFrequency(buffer, charCount),
+            )
+        }
+
+        /** FRQ1 trailer. One byte per character, 255 for the most common in essay.txt. */
+        private fun readFrequency(buffer: ByteBuffer, charCount: Int): IntArray {
+            val zeros = IntArray(charCount)
+            if (buffer.remaining() < 6) return zeros
+            val mark = ByteArray(4)
+            buffer.get(mark)
+            if (!mark.contentEquals(byteArrayOf('F'.code.toByte(), 'R'.code.toByte(), 'Q'.code.toByte(), '1'.code.toByte()))) {
+                return zeros
+            }
+            if (buffer.u16() != charCount) return zeros
+            return IntArray(charCount) { buffer.get().toInt() and 0xff }
+        }
+
+        /** RDG1 trailer. Older tables have no trailer and every reading is empty. */
+        private fun readReadings(buffer: ByteBuffer, charCount: Int): Array<String> {
+            val empty = Array(charCount) { "" }
+            if (buffer.remaining() < 6) return empty
+            val mark = ByteArray(4)
+            buffer.get(mark)
+            if (!mark.contentEquals(byteArrayOf('R'.code.toByte(), 'D'.code.toByte(), 'G'.code.toByte(), '1'.code.toByte()))) {
+                return empty
+            }
+            if (buffer.u16() != charCount) return empty
+            return Array(charCount) {
+                val length = buffer.get().toInt() and 0xff
+                val bytes = ByteArray(length)
+                buffer.get(bytes)
+                String(bytes, Charsets.UTF_8)
+            }
         }
     }
 }

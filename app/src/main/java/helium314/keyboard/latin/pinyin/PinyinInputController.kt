@@ -17,6 +17,8 @@ class PinyinInputController(
     private val deliver: (block: () -> Unit) -> Unit,
     private val script: PinyinScriptStore = MemoryScriptStore(),
     private val hanzi: HanziIndex = EmptyHanzi,
+    private val later: (Long, () -> Unit) -> Unit = { _, block -> block() },
+    private val inkMemory: HandwritingMemory = HandwritingMemory.NONE,
 ) {
     private var asciiMode = false
     private var asciiLocked = false
@@ -40,10 +42,21 @@ class PinyinInputController(
     private val ink = ArrayList<FloatArray>()
     private var menu = emptyList<MenuChar>()
     private var menuFor: String? = null
+    private var shownSnapshot: RimeSnapshot? = null
     private var menuGeneration = 0
+    @Volatile private var lookupGeneration = 0
+    private var leaveToken = 0
+    private val lookupLock = Any()
     private val pending = ArrayList<PendingKey>()
 
     fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
+        inkMemory.learning = !incognitoNow
+        // Firefox on the Cursor page restarts the input while 查 is open. That is the same
+        // field, so the pad stays. A different field still drops it.
+        if (lookupOpen && leaveToken != 0) {
+            leaveToken++
+            if (!keepSession) finishNow()
+        }
         val incognitoChanged = ready && incognito != incognitoNow
         if (keepSession && ready && !incognitoChanged && !failed) {
             asciiLocked = forceAscii
@@ -84,7 +97,8 @@ class PinyinInputController(
                 ready = started
                 if (!started) {
                     ui.showFailure(failureText)
-                    PinyinSpaceLabel.text = "英文"
+                    simplified = script.read()
+                    publishMode()
                 } else {
                     applyScript(script.read())
                     publishMode()
@@ -97,7 +111,23 @@ class PinyinInputController(
 
     fun onFinishInput() {
         // The tap already passed the character. Finishing input drops the connection, so committing here never lands.
-        closeLookup()
+        if (!lookupOpen) {
+            finishNow()
+            return
+        }
+        // The Cursor page in Firefox finishes the input when the caret blinks, then starts
+        // it again. Closing 查 here removes the pad under the finger. A real leave has no
+        // following start, so the pad closes once that wait ends.
+        val token = ++leaveToken
+        later(LEAVE_WAIT_MS) finish@{
+            if (token != leaveToken) return@finish
+            finishNow()
+        }
+    }
+
+    private fun finishNow() {
+        leaveToken++
+        closeLookup(restoreStrip = false)
         dropPreedit()
         client.destroySession()
         ready = false
@@ -107,7 +137,7 @@ class PinyinInputController(
     }
 
     fun onLeaveSubtype() {
-        closeLookup()
+        closeLookup(restoreStrip = false)
         endCompositionAsText()
         client.destroySession()
         ready = false
@@ -236,6 +266,7 @@ class PinyinInputController(
         restoring = true
         try {
             showPreedit(snapshot.preedit)
+            shownSnapshot = snapshot
             ui.showCandidates(snapshot)
         } finally {
             restoring = false
@@ -245,12 +276,16 @@ class PinyinInputController(
     fun onStartBatchInput(): Boolean = true
 
     fun shouldKeepStrip(): Boolean {
-        return preparing || failed || (ready && !asciiMode && hasPreedit)
+        // An empty 查 has no spelling. Firefox still restarts the input, and the neutral
+        // strip would cover the drawing buttons and poke the page.
+        return lookupOpen || preparing || failed || (ready && !asciiMode && hasPreedit)
     }
 
     fun lookupAvailable(): Boolean {
         return ready && !failed && !preparing && !asciiMode && !asciiLocked
     }
+
+    fun isLookupOpen(): Boolean = lookupOpen
 
     fun onOpenLookup() {
         if (!lookupAvailable()) return
@@ -299,7 +334,7 @@ class PinyinInputController(
 
     fun onLookupStroke(points: FloatArray) {
         if (!padOpen || points.size < 4) return
-        ink.add(points)
+        ink.add(points.copyOf())
         publishLookup()
     }
 
@@ -350,6 +385,7 @@ class PinyinInputController(
     private fun pass(row: LookupRow) {
         if (!lookupOpen || passed || row.text.isEmpty()) return
         passed = true
+        if (ink.isNotEmpty()) inkMemory.remember(row.text)
         val text = if (row.page < 0) row.text else {
             val commit = client.selectOnPage(row.page, row.index)
             if (commit.isNotEmpty()) commit else row.text
@@ -381,6 +417,7 @@ class PinyinInputController(
         }
         if (!asciiMode && snapshot.preedit.isNotEmpty()) {
             showPreedit(snapshot.preedit)
+            shownSnapshot = snapshot
             ui.showCandidates(snapshot)
         } else if (snapshot.preedit.isEmpty()) {
             if (hasPreedit && snapshot.commit.isEmpty()) erasePreedit()
@@ -388,6 +425,7 @@ class PinyinInputController(
             shown = ""
             hasPreedit = false
             preeditLength = 0
+            shownSnapshot = null
             ui.showNeutral()
         }
         publishMode()
@@ -406,6 +444,7 @@ class PinyinInputController(
         if (asciiMode) {
             hasPreedit = false
             preeditLength = 0
+            shownSnapshot = null
             ui.showNeutral()
             return
         }
@@ -414,12 +453,14 @@ class PinyinInputController(
             shown = snapshot.preedit
             hasPreedit = true
             preeditLength = snapshot.preedit.length
+            shownSnapshot = snapshot
             ui.showCandidates(snapshot)
         } else {
             plain = false
             shown = ""
             hasPreedit = false
             preeditLength = 0
+            shownSnapshot = null
             ui.showNeutral()
         }
     }
@@ -537,7 +578,9 @@ class PinyinInputController(
     private fun onScriptToggle(): Boolean {
         if (failed || asciiLocked) return true
         if (preparing || !ready) {
-            script.save(!script.read())
+            simplified = !script.read()
+            script.save(simplified)
+            publishMode()
             return true
         }
         val next = !simplified
@@ -559,12 +602,44 @@ class PinyinInputController(
     }
 
     private fun publishLookup() {
-        ui.showLookup(buildLookup(
-            menu, ink, hanzi, simplified, radical, padOpen, widened, hasPreedit,
-        ))
+        val generation = ++lookupGeneration
+        if (ink.isEmpty()) {
+            ui.showLookup(buildLookup(
+                menu, emptyList(), hanzi, simplified, radical, padOpen, widened, hasPreedit,
+            ))
+            return
+        }
+        // No spelling ranks every character. Show the line first. A late score for an older
+        // line must not replace the strokes drawn since.
+        val inkNow = ink.map { it.copyOf() }
+        val menuNow = menu
+        val simplifiedNow = simplified
+        val radicalNow = radical
+        val padNow = padOpen
+        val widenedNow = widened
+        val spellingNow = hasPreedit
+        ui.showInk(inkNow)
+        starter.start {
+            synchronized(lookupLock) {
+                if (generation != lookupGeneration) return@start
+                val model = try {
+                    buildLookup(
+                        menuNow, inkNow, hanzi, simplifiedNow, radicalNow, padNow, widenedNow, spellingNow,
+                    )
+                } catch (_: RuntimeException) {
+                    buildLookup(
+                        menuNow, emptyList(), hanzi, simplifiedNow, radicalNow, padNow, widenedNow, spellingNow,
+                    ).copy(strokes = inkNow)
+                }
+                deliver {
+                    if (generation != lookupGeneration || !lookupOpen) return@deliver
+                    ui.showLookup(model)
+                }
+            }
+        }
     }
 
-    private fun closeLookup() {
+    private fun closeLookup(restoreStrip: Boolean = true) {
         passed = false
         if (!lookupOpen) return
         lookupOpen = false
@@ -573,6 +648,13 @@ class PinyinInputController(
         radical = 0
         ink.clear()
         ui.hideLookup()
+        if (!restoreStrip || !ready || failed || preparing) return
+        val cached = shownSnapshot
+        if (!asciiMode && hasPreedit && cached != null && cached.preedit.isNotEmpty()) {
+            ui.showCandidates(cached)
+        } else {
+            ui.showNeutral()
+        }
     }
 
     /**
@@ -603,12 +685,16 @@ class PinyinInputController(
     }
 
     private fun publishMode() {
-        val label = if (asciiMode) "英文" else if (simplified) "中文·简" else "中文·繁"
+        val label = if (simplified) "中文·简" else "中文·繁"
         PinyinSpaceLabel.text = label
         ui.onModeChanged(label)
     }
 
     private data class PendingKey(val codePoint: Int, val keyCode: Int, val symbols: Boolean)
+
+    private companion object {
+        const val LEAVE_WAIT_MS = 200L
+    }
 }
 
 /** Rime inserts a space between syllables in the preedit. The user did not type it. */
