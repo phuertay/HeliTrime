@@ -24,6 +24,10 @@ import java.io.File
 import helium314.keyboard.latin.common.ColorType
 import helium314.keyboard.latin.settings.Settings
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 interface LookupListener {
     fun onClose()
@@ -53,6 +57,9 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     private val faceByCode = HashMap<Int, Typeface>()
     private val buttons = LinearLayout(context)
     private var model = LookupModel(emptyList(), emptyList(), 0, false, false, true, false, emptyList())
+    private var gridColumns = -1
+    private val scrollChips: HorizontalScrollView
+    private val body: LinearLayout
 
     init {
         tag = TAG
@@ -63,7 +70,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         isFocusableInTouchMode = false
         descendantFocusability = FOCUS_BLOCK_DESCENDANTS
         applyTheme()
-        val scrollChips = HorizontalScrollView(context)
+        scrollChips = HorizontalScrollView(context)
         scrollChips.isHorizontalScrollBarEnabled = false
         scrollChips.isFocusable = false
         scrollChips.isFocusableInTouchMode = false
@@ -78,11 +85,17 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         scrollGrid.isFocusableInTouchMode = false
         grid.orientation = VERTICAL
         scrollGrid.addView(grid)
-        val body = LinearLayout(context)
-        body.orientation = HORIZONTAL
+        ink.tag = INK_TAG
+        body = WritingBody(context)
         body.addView(scrollGrid, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
         body.addView(ink, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
         addView(body, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (!model.pad) return
+        if (columnCount() != gridColumns) bindGrid()
     }
 
     fun setModel(next: LookupModel) {
@@ -125,8 +138,9 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         grid.removeAllViews()
         val rows = model.rows
         if (rows.isEmpty()) return
-        // The writing pad takes half the width and half the columns, so a character stays the same size.
-        val columns = if (model.pad) 4 else 8
+        // A character stays about an eighth of the keyboard. The pad keeps the rest, as a square.
+        val columns = columnCount()
+        gridColumns = columns
         var line = newLine()
         var used = 0
         for (item in rows) {
@@ -144,6 +158,16 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             used += span
         }
         padLine(line, columns - used)
+    }
+
+    /** Pad open: the writing square takes the body height. The grid keeps what is left. */
+    private fun columnCount(): Int {
+        if (!model.pad) return 8
+        if (width <= 0 || height <= 0) return 4
+        val bodyHeight = (height - scrollChips.height).coerceAtLeast(1)
+        val inkSide = min(bodyHeight, width)
+        val gridWidth = (width - inkSide).coerceAtLeast(0)
+        return max(1, (8f * gridWidth / width).roundToInt())
     }
 
     private fun newLine(): LinearLayout {
@@ -189,12 +213,23 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         word.includeFontPadding = false
         word.setPadding(0, 0, 0, 0)
         word.minHeight = 0
+        val face = if (hanzi.isEmpty()) Typeface.DEFAULT else faceFor(hanzi.codePointAt(0))
+        // The box is the face's full line. A shorter one clips the stroke and the syllable covers it.
         word.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, dp(22),
-        )
+            LinearLayout.LayoutParams.WRAP_CONTENT, textLineHeight(face, 20f),
+        ).apply { bottomMargin = dp(2) }
         column.addView(word)
         column.addView(readingLabel(reading))
         return column
+    }
+
+    /** Ascent through descent, and at least the em. Tone marks and CJK strokes both sit in that span. */
+    private fun textLineHeight(face: Typeface, sp: Float): Int {
+        val paint = TextPaint()
+        paint.typeface = face
+        paint.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, resources.displayMetrics)
+        val metrics = paint.fontMetricsInt
+        return max(metrics.descent - metrics.ascent, ceil(paint.textSize).toInt())
     }
 
     /** Latin face. The hanzi face does not carry the tone marks. */
@@ -209,7 +244,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         view.setPadding(0, 0, 0, 0)
         view.minHeight = 0
         view.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(13),
+            LinearLayout.LayoutParams.MATCH_PARENT, textLineHeight(Typeface.DEFAULT, 9f),
         )
         view.typeface = Typeface.DEFAULT
         view.setTextColor(Settings.getValues().mColors.get(ColorType.KEY_TEXT))
@@ -392,12 +427,13 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             if (live.size >= 4) drawOne(canvas, live)
         }
 
-        /** 米字格: square, cross, both diagonals. Marks the writing box when no tiles are showing. */
+        /** 米字格: square, cross, both diagonals. Fills the writing view, which is already the tall square. */
         private fun drawMiZhi(canvas: Canvas) {
             val w = width.toFloat()
             val h = height.toFloat()
-            if (w < 2f || h < 2f) return
-            val side = minOf(w, h) * 0.86f
+            val inset = dp(4).toFloat()
+            val side = minOf(w, h) - inset * 2f
+            if (side < 2f) return
             val left = (w - side) / 2f
             val top = (h - side) / 2f
             val right = left + side
@@ -429,8 +465,48 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         }
     }
 
+    /** While writing, the pad is a square of the body height. The grid keeps the width that remains. */
+    private inner class WritingBody(context: Context) : LinearLayout(context) {
+        init { orientation = HORIZONTAL }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            if (!model.pad) {
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+                return
+            }
+            val width = MeasureSpec.getSize(widthMeasureSpec)
+            val height = MeasureSpec.getSize(heightMeasureSpec)
+            val inkSide = min(height, width)
+            val gridWidth = (width - inkSide).coerceAtLeast(0)
+            val exactHeight = MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
+            scrollGrid.measure(MeasureSpec.makeMeasureSpec(gridWidth, MeasureSpec.EXACTLY), exactHeight)
+            ink.measure(MeasureSpec.makeMeasureSpec(inkSide, MeasureSpec.EXACTLY), exactHeight)
+            setMeasuredDimension(width, height)
+        }
+
+        override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+            if (!model.pad) {
+                super.onLayout(changed, left, top, right, bottom)
+                return
+            }
+            val width = right - left
+            val height = bottom - top
+            val inkSide = min(height, width)
+            val gridWidth = width - inkSide
+            val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
+            if (rtl) {
+                ink.layout(0, 0, inkSide, height)
+                scrollGrid.layout(inkSide, 0, width, height)
+            } else {
+                scrollGrid.layout(0, 0, gridWidth, height)
+                ink.layout(gridWidth, 0, width, height)
+            }
+        }
+    }
+
     companion object {
         const val TAG = "hanzi_lookup"
+        const val INK_TAG = "hanzi_ink"
 
         /** Simplified Chinese face. Index 2 is SC in Noto CJK and in Samsung's SEC CJK collection. */
         private fun loadSystemCjkFaces(): List<Typeface> {

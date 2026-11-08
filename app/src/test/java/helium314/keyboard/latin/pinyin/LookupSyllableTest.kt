@@ -36,35 +36,43 @@ class LookupSyllableTest {
         val writing = texts(panel)
         assertTrue("rén" in writing && "人" in writing, writing.toString())
         assertEquals(listOf("⌫", "清", "全", "简", "⌨", "×"), texts(panel.actionBar()))
-        assertTileShorterThan(panel, "人", 42)
+        assertSyllableClearsTheCharacter(panel, "人", "rén")
     }
 
     @Test
-    fun syllableTileIsShorterThanTheOldSpacer() {
+    fun syllableSitsUnderTheCharacterInsteadOfCoveringIt() {
         val context = ApplicationProvider.getApplicationContext<App>()
         val panel = LookupPanel(context)
         panel.setModel(model(pad = false, LookupRow("语", 0, 0, listOf("yǔ"))))
-        assertTileShorterThan(panel, "语", 42)
+        assertSyllableClearsTheCharacter(panel, "语", "yǔ")
     }
 
-    private fun assertTileShorterThan(panel: LookupPanel, hanzi: String, maxDp: Int) {
-        val width = panel.resources.displayMetrics.widthPixels.coerceAtLeast(1080)
-        val height = 800
+    @Test
+    fun writingPadUsesTheFreedHeight() {
+        val context = ApplicationProvider.getApplicationContext<App>()
+        val panel = LookupPanel(context)
+        panel.setModel(model(pad = true, LookupRow("人", -1, -1, listOf("rén"))))
+        layOut(panel, 1080, 800)
+        val ink = find(panel) { it.tag == LookupPanel.INK_TAG }
+        assertTrue(ink != null && ink.height == 800 && ink.width == ink.height, "ink ${ink?.width}x${ink?.height}")
+    }
+
+    private fun assertSyllableClearsTheCharacter(panel: LookupPanel, hanzi: String, reading: String) {
+        layOut(panel, panel.resources.displayMetrics.widthPixels.coerceAtLeast(1080), 800)
+        val label = find(panel) { it is TextView && it.text.toString() == hanzi } as? TextView
+        val syllable = find(panel) { it is TextView && it.text.toString() == reading } as? TextView
+        assertTrue(
+            label != null && syllable != null && syllable.top >= label.bottom,
+            "syllable top ${syllable?.top} hanzi bottom ${label?.bottom} hanzi height ${label?.height}",
+        )
+    }
+
+    private fun layOut(panel: LookupPanel, width: Int, height: Int) {
         panel.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),
         )
         panel.layout(0, 0, width, height)
-        val label = find(panel) { it is TextView && it.text.toString() == hanzi } as? TextView
-        val column = label?.parent as? View
-        val tile = column?.parent as? View
-        val density = panel.resources.displayMetrics.density
-        fun dpOf(view: View?) = (view?.height ?: -1) / density
-        val dp = dpOf(tile)
-        assertTrue(
-            tile != null && dp < maxDp,
-            "tile for $hanzi is ${dp}dp, hanzi ${dpOf(label)}dp pad=${label?.includeFontPadding}, column ${dpOf(column)}dp",
-        )
     }
 
     private fun find(view: View, match: (View) -> Boolean): View? {
