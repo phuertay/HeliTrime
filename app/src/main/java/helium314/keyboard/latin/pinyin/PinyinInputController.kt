@@ -85,6 +85,8 @@ class PinyinInputController(
                 ready = started
                 if (!started) {
                     ui.showFailure(failureText)
+                    simplified = script.read()
+                    publishMode()
                 } else {
                     applyScript(script.read())
                     publishMode()
@@ -103,6 +105,7 @@ class PinyinInputController(
         ready = false
         hasPreedit = false
         preeditLength = 0
+        PinyinSpaceLabel.text = null
     }
 
     fun onLeaveSubtype() {
@@ -110,6 +113,7 @@ class PinyinInputController(
         endCompositionAsText()
         client.destroySession()
         ready = false
+        PinyinSpaceLabel.text = null
         ui.onModeChanged("")
     }
 
@@ -543,7 +547,9 @@ class PinyinInputController(
     private fun onScriptToggle(): Boolean {
         if (failed || asciiLocked) return true
         if (preparing || !ready) {
-            script.save(!script.read())
+            simplified = !script.read()
+            script.save(simplified)
+            publishMode()
             return true
         }
         val next = !simplified
@@ -616,7 +622,9 @@ class PinyinInputController(
     }
 
     private fun publishMode() {
-        ui.onModeChanged("")
+        val label = if (simplified) "中文·简" else "中文·繁"
+        PinyinSpaceLabel.text = label
+        ui.onModeChanged(label)
     }
 
     private data class PendingKey(val codePoint: Int, val keyCode: Int, val symbols: Boolean)

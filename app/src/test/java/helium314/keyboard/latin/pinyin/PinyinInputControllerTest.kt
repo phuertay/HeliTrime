@@ -136,6 +136,7 @@ class PinyinInputControllerTest {
         val controller = controller(client, editor)
         controller.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
         assertTrue(client.getOption("ascii_mode"))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
         assertFalse(controller.onEvent('a'.code, 0, false))
         assertEquals("", editor.composing)
         assertTrue(editorForcesAscii(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI))
@@ -160,6 +161,7 @@ class PinyinInputControllerTest {
         val controller = controller(client, editor, store)
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
         assertTrue(client.getOption("zh_hans"))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
         controller.onEvent('n'.code, 0, false)
         assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
         assertFalse(client.getOption("zh_hans"))
@@ -168,12 +170,14 @@ class PinyinInputControllerTest {
         assertFalse(client.getOption("ascii_mode"))
         assertEquals("n", editor.composing)
         assertEquals("", editor.committed)
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
         assertTrue(controller.onEvent('i'.code, 0, false))
         assertEquals("ni", editor.composing)
 
         val next = FakeRimeClient()
         controller(next, FakeEditor(), store).onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
         assertFalse(next.getOption("zh_hans"))
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
     }
 
     @Test
@@ -189,6 +193,7 @@ class PinyinInputControllerTest {
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
         assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.RIME_SCRIPT, false))
         assertFalse(client.getOption("zh_hans"))
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
     }
 
     @Test
@@ -203,6 +208,7 @@ class PinyinInputControllerTest {
         assertFalse(client.getOption("zh_hans"))
         assertTrue(client.getOption("zh_hant"))
         assertFalse(client.getOption("ascii_mode"))
+        assertEquals("中文·繁", PinyinSpaceLabel.text)
     }
 
     @Test
@@ -348,12 +354,14 @@ class PinyinInputControllerTest {
         controller.onEvent('i'.code, 0, false)
         assertFalse(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.LANGUAGE_SWITCH, false))
         assertFalse(client.getOption("ascii_mode"))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
         assertEquals("ji", editor.composing)
         assertEquals("", editor.finishedText)
 
         val locked = controller(FakeRimeClient(), FakeEditor())
         locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
         assertFalse(locked.onEvent(Event.NOT_A_CODE_POINT, KeyCode.LANGUAGE_SWITCH, false))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
     }
 
     @Test
