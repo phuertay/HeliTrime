@@ -404,6 +404,32 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun emptyLookupKeepsTheStripAndSurvivesAFirefoxRestart() {
+        val pending = ArrayList<() -> Unit>()
+        val client = FakeRimeClient()
+        val controller = controller(client, FakeEditor(), later = { _, block -> pending.add(block) })
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertFalse(controller.shouldKeepStrip())
+        controller.onOpenLookup()
+        assertTrue(controller.shouldKeepStrip())
+        assertTrue(controller.isLookupOpen())
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        assertEquals(1, lookupStrokes)
+        controller.onFinishInput()
+        assertTrue(controller.isLookupOpen())
+        assertEquals(1, pending.size)
+        controller.onStartInput(keepSession = true, forceAscii = false, incognitoNow = false)
+        pending.removeAt(0).invoke()
+        assertTrue(controller.isLookupOpen())
+        assertEquals(1, lookupStrokes)
+        assertTrue(client.hasSession())
+        controller.onFinishInput()
+        pending.removeAt(0).invoke()
+        assertFalse(controller.isLookupOpen())
+        assertFalse(client.hasSession())
+    }
+
+    @Test
     fun englishAndPasswordHideTheLookup() {
         val locked = controller(FakeRimeClient(), FakeEditor())
         locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
@@ -419,6 +445,7 @@ class PinyinInputControllerTest {
         script: PinyinScriptStore = MemoryScriptStore(),
         hanzi: HanziIndex = EmptyHanzi,
         starter: PinyinStarter = PinyinStarter { it() },
+        later: (Long, () -> Unit) -> Unit = { _, block -> block() },
     ): PinyinInputController {
         return PinyinInputController(
             client = client,
@@ -444,6 +471,7 @@ class PinyinInputControllerTest {
             deliver = { it() },
             script = script,
             hanzi = hanzi,
+            later = later,
         )
     }
 

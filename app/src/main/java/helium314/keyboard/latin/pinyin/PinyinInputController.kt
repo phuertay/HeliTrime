@@ -17,6 +17,7 @@ class PinyinInputController(
     private val deliver: (block: () -> Unit) -> Unit,
     private val script: PinyinScriptStore = MemoryScriptStore(),
     private val hanzi: HanziIndex = EmptyHanzi,
+    private val later: (Long, () -> Unit) -> Unit = { _, block -> block() },
 ) {
     private var asciiMode = false
     private var asciiLocked = false
@@ -43,10 +44,17 @@ class PinyinInputController(
     private var shownSnapshot: RimeSnapshot? = null
     private var menuGeneration = 0
     @Volatile private var lookupGeneration = 0
+    private var leaveToken = 0
     private val lookupLock = Any()
     private val pending = ArrayList<PendingKey>()
 
     fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
+        // Firefox on the Cursor page restarts the input while 查 is open. That is the same
+        // field, so the pad stays. A different field still drops it.
+        if (lookupOpen && leaveToken != 0) {
+            leaveToken++
+            if (!keepSession) finishNow()
+        }
         val incognitoChanged = ready && incognito != incognitoNow
         if (keepSession && ready && !incognitoChanged && !failed) {
             asciiLocked = forceAscii
@@ -101,6 +109,22 @@ class PinyinInputController(
 
     fun onFinishInput() {
         // The tap already passed the character. Finishing input drops the connection, so committing here never lands.
+        if (!lookupOpen) {
+            finishNow()
+            return
+        }
+        // The Cursor page in Firefox finishes the input when the caret blinks, then starts
+        // it again. Closing 查 here removes the pad under the finger. A real leave has no
+        // following start, so the pad closes once that wait ends.
+        val token = ++leaveToken
+        later(LEAVE_WAIT_MS) finish@{
+            if (token != leaveToken) return@finish
+            finishNow()
+        }
+    }
+
+    private fun finishNow() {
+        leaveToken++
         closeLookup(restoreStrip = false)
         dropPreedit()
         client.destroySession()
@@ -250,7 +274,9 @@ class PinyinInputController(
     fun onStartBatchInput(): Boolean = true
 
     fun shouldKeepStrip(): Boolean {
-        return preparing || failed || (ready && !asciiMode && hasPreedit)
+        // An empty 查 has no spelling. Firefox still restarts the input, and the neutral
+        // strip would cover the drawing buttons and poke the page.
+        return lookupOpen || preparing || failed || (ready && !asciiMode && hasPreedit)
     }
 
     fun lookupAvailable(): Boolean {
@@ -662,6 +688,10 @@ class PinyinInputController(
     }
 
     private data class PendingKey(val codePoint: Int, val keyCode: Int, val symbols: Boolean)
+
+    private companion object {
+        const val LEAVE_WAIT_MS = 200L
+    }
 }
 
 /** Rime inserts a space between syllables in the preedit. The user did not type it. */

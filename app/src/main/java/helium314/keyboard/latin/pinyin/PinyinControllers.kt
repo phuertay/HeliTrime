@@ -89,6 +89,7 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         failureText = ime.getString(R.string.pinyin_load_failed),
         starter = PinyinStarter { block -> thread(name = "rime-start", isDaemon = true) { block() } },
         deliver = { block -> main.post(block) },
+        later = { delay, block -> main.postDelayed(block, delay) },
         script = PrefScriptStore(ime.prefs()),
         hanzi = HanziTable.open(ime.applicationContext),
     )

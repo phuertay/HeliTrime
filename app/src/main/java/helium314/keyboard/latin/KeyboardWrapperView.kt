@@ -131,19 +131,23 @@ class KeyboardWrapperView @JvmOverloads constructor(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        val lookup = findViewWithTag<View>(helium314.keyboard.latin.pinyin.LookupPanel.TAG) ?: return
-        if (lookup.visibility == View.GONE) return
+        val lookup = findViewWithTag<View>(helium314.keyboard.latin.pinyin.LookupPanel.TAG)
+        val lookupOpen = lookup != null && lookup.visibility != View.GONE
         // The wrapper is wrap_content. A match_parent panel otherwise measures to the full
         // IME window, covers the editor, and the tap finishes the input connection.
-        val keyboardView = KeyboardSwitcher.getInstance().visibleKeyboardView ?: return
-        val keyboardHeight = keyboardView.measuredHeight
-        if (keyboardHeight <= 0) return
+        // Firefox on the Cursor page does that; Keep does not. Measure the keys first.
+        if (lookupOpen) lookup.layoutParams.height = 0
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (!lookupOpen) return
+        val keyboardHeight = KeyboardSwitcher.getInstance().visibleKeyboardView?.measuredHeight ?: 0
+        val height = if (keyboardHeight > 0) keyboardHeight else measuredHeight
+        if (height <= 0) return
+        lookup.layoutParams.height = height
         lookup.measure(
             MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
-            MeasureSpec.makeMeasureSpec(keyboardHeight, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
         )
-        setMeasuredDimension(measuredWidth, keyboardHeight)
+        if (measuredHeight != height) setMeasuredDimension(measuredWidth, height)
     }
 
     @SuppressLint("RtlHardcoded")
