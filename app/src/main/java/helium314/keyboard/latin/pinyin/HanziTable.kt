@@ -61,9 +61,11 @@ class HanziTable private constructor(
             val index = indexOf(codePoint)
             if (index < 0) continue
             if (radical != 0 && radicals[index] != radical) continue
-            val start = strokeAt[index]
             val length = strokeLen[index]
-            if (length <= 0 || start < 0 || start > strokes.size - length) continue
+            // Most of the table is the wrong length. Skip it before copying the stroke data.
+            if (!strokeCountFits(ink.size, length)) continue
+            val start = strokeAt[index]
+            if (start < 0 || start > strokes.size - length) continue
             val model = strokes.copyOfRange(start, start + length)
             val score = matchScore(ink, model)
             if (score != Int.MIN_VALUE) hits.add(codePoint to score)

@@ -1,5 +1,8 @@
 package helium314.keyboard.latin.pinyin
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -92,6 +95,21 @@ class LookupSyllableTest {
     }
 
     @Test
+    fun strokeStaysVisibleAfterTheFingerLifts() {
+        val context = ApplicationProvider.getApplicationContext<App>()
+        val panel = LookupPanel(context)
+        panel.setModel(LookupModel(emptyList(), emptyList(), 0, true, false, true, false, emptyList()))
+        layOut(panel, 1080, 800)
+        val ink = find(panel) { it.tag == LookupPanel.INK_TAG } ?: error("ink")
+        ink.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 80f, 200f, 0))
+        ink.dispatchTouchEvent(MotionEvent.obtain(0, 8, MotionEvent.ACTION_MOVE, 400f, 210f, 0))
+        ink.dispatchTouchEvent(MotionEvent.obtain(0, 16, MotionEvent.ACTION_UP, 700f, 200f, 0))
+        assertTrue(opaquePixels(ink) > 20, "stroke missing after finger up")
+        layOut(panel, 900, 700)
+        assertTrue(opaquePixels(ink) > 20, "stroke missing after the pad is resized")
+    }
+
+    @Test
     fun writingPadUsesTheFreedHeight() {
         val context = ApplicationProvider.getApplicationContext<App>()
         val panel = LookupPanel(context)
@@ -131,6 +149,16 @@ class LookupSyllableTest {
     private fun model(pad: Boolean, vararg rows: LookupRow) = LookupModel(
         rows.toList(), emptyList(), 0, pad, false, true, true, emptyList(),
     )
+
+    private fun opaquePixels(view: View): Int {
+        val bitmap = Bitmap.createBitmap(view.width.coerceAtLeast(1), view.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
+        var count = 0
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        for (pixel in pixels) if (Color.alpha(pixel) > 128) count++
+        return count
+    }
 
     private fun texts(view: View): List<String> {
         if (view is TextView) return listOf(view.text.toString())

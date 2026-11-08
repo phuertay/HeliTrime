@@ -79,12 +79,16 @@ fun packStroke(stroke: FloatArray, minX: Float, minY: Float, maxX: Float, maxY: 
  * ponytail: greedy pairing, not min-cost. Crossed strokes can swap. Upgrade path is
  * Hungarian on the same similarity, still per character.
  */
+/** A short character can be off by one stroke. Six or more can be off by two. */
+fun strokeCountFits(inkCount: Int, modelCount: Int): Boolean {
+    if (inkCount <= 0 || modelCount <= 0) return false
+    val allowance = if (max(inkCount, modelCount) >= 6) 2 else 1
+    return abs(inkCount - modelCount) <= allowance
+}
+
 fun matchScore(ink: IntArray, model: IntArray): Int {
-    if (ink.isEmpty() || model.isEmpty()) return Int.MIN_VALUE
+    if (!strokeCountFits(ink.size, model.size)) return Int.MIN_VALUE
     val extra = abs(ink.size - model.size)
-    // ponytail: a 7-stroke character written without its dots is off by two. Short characters stay at one. Upgrade: stroke-edit distance instead of dropping whole strokes.
-    val allowance = if (max(ink.size, model.size) >= 6) 2 else 1
-    if (extra > allowance) return Int.MIN_VALUE
     if (extra == 0) return assignStrokes(ink, model)
     return dropScore(ink, model, extra) - 8 * extra
 }

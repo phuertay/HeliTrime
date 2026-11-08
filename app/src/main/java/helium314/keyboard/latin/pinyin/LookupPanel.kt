@@ -103,11 +103,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         val sameGrid = next.rows == model.rows && next.pad == model.pad
         model = next
         if (!sameGrid) scrollGrid.scrollTo(0, 0)
+        // The line is stored before the candidate grid is rebuilt.
+        ink.strokes = next.strokes
+        ink.visibility = if (next.pad) VISIBLE else GONE
         applyTheme()
         bindChips()
         bindGrid()
-        ink.strokes = next.strokes
-        ink.visibility = if (next.pad) VISIBLE else GONE
         bindButtons()
     }
 
@@ -424,20 +425,29 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            parent?.requestDisallowInterceptTouchEvent(true)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> live = floatArrayOf(event.x, event.y)
                 MotionEvent.ACTION_MOVE -> live += floatArrayOf(event.x, event.y)
-                MotionEvent.ACTION_UP -> {
-                    live += floatArrayOf(event.x, event.y)
-                    val done = live
-                    live = FloatArray(0)
-                    val normalized = normalize(done)
-                    if (normalized.size >= 4) listener?.onStroke(normalized)
-                }
-                MotionEvent.ACTION_CANCEL -> live = FloatArray(0)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finishStroke(event)
             }
             invalidate()
             return true
+        }
+
+        /** The line stays in this view. A later score must not be what makes it visible. */
+        private fun finishStroke(event: MotionEvent) {
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                live += floatArrayOf(event.x, event.y)
+            }
+            val normalized = normalize(live)
+            live = FloatArray(0)
+            if (normalized.size < 4) return
+            val kept = strokes + normalized
+            strokes = kept
+            if (event.actionMasked != MotionEvent.ACTION_UP) return
+            listener?.onStroke(normalized)
+            if (strokes.size < kept.size) strokes = kept
         }
 
         /** 0..1000 of this view. A later resize redraws the same stroke inside the new box. */
