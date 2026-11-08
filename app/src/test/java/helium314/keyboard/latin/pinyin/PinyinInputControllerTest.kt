@@ -345,6 +345,32 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun globeTogglesLatinAndPinyinWithoutLeavingTheKeyboard() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        editor.onFinished = { controller.onUpdateSelection(belated = false) }
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('j'.code, 0, false)
+        controller.onEvent('i'.code, 0, false)
+        assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.LANGUAGE_SWITCH, false))
+        assertTrue(client.getOption("ascii_mode"))
+        assertEquals("英文", PinyinSpaceLabel.text)
+        assertEquals("ji", editor.finishedText)
+        assertFalse(controller.onEvent('a'.code, 0, false))
+        assertTrue(controller.onEvent(Event.NOT_A_CODE_POINT, KeyCode.LANGUAGE_SWITCH, false))
+        assertFalse(client.getOption("ascii_mode"))
+        assertEquals("中文·简", PinyinSpaceLabel.text)
+        assertTrue(controller.onEvent('n'.code, 0, false))
+        assertEquals("n", editor.composing)
+
+        val locked = controller(FakeRimeClient(), FakeEditor())
+        locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
+        assertFalse(locked.onEvent(Event.NOT_A_CODE_POINT, KeyCode.LANGUAGE_SWITCH, false))
+        assertEquals("英文", PinyinSpaceLabel.text)
+    }
+
+    @Test
     fun englishAndPasswordHideTheLookup() {
         val locked = controller(FakeRimeClient(), FakeEditor())
         locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)

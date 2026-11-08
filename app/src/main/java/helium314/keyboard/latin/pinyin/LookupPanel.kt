@@ -137,7 +137,7 @@ class LookupPanel(context: Context) : LinearLayout(context) {
             }
             val cell = candidate(item)
             cell.layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, span.toFloat()).apply {
-                setMargins(dp(2), dp(2), dp(2), dp(2))
+                setMargins(dp(2), dp(1), dp(2), dp(1))
             }
             line.addView(cell)
             used += span
@@ -154,7 +154,8 @@ class LookupPanel(context: Context) : LinearLayout(context) {
 
     private fun padLine(line: LinearLayout, rest: Int) {
         if (rest <= 0) return
-        line.addView(View(context), LayoutParams(0, dp(48), rest.toFloat()))
+        // Width only. A fixed height here stretched every tile to that height.
+        line.addView(View(context), LayoutParams(0, 0, rest.toFloat()))
     }
 
     /** One column per character, syllable under the hanzi. A word takes one column per character. */
@@ -183,8 +184,14 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         val column = LinearLayout(context)
         column.orientation = VERTICAL
         column.gravity = Gravity.CENTER_HORIZONTAL
-        column.setPadding(0, dp(2), 0, dp(2))
-        column.addView(text(hanzi, 20f))
+        val word = text(hanzi, 20f)
+        word.includeFontPadding = false
+        word.setPadding(0, 0, 0, 0)
+        word.minHeight = 0
+        word.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, dp(22),
+        )
+        column.addView(word)
         column.addView(readingLabel(reading))
         return column
     }
@@ -197,10 +204,16 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         view.isFocusable = false
         view.isFocusableInTouchMode = false
         view.setSingleLine(true)
+        view.includeFontPadding = false
+        view.setPadding(0, 0, 0, 0)
+        view.minHeight = 0
+        view.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(13),
+        )
         view.typeface = Typeface.DEFAULT
         view.setTextColor(Settings.getValues().mColors.get(ColorType.KEY_TEXT))
         view.alpha = 0.75f
-        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
         return view
     }
 

@@ -118,6 +118,7 @@ class PinyinInputController(
     /** @return true when the key was consumed */
     fun onEvent(codePoint: Int, keyCode: Int, symbolsLayer: Boolean): Boolean {
         if (keyCode == KeyCode.RIME_SCRIPT) return onScriptToggle()
+        if (keyCode == KeyCode.LANGUAGE_SWITCH && onLatinToggle()) return true
         if (lookupOpen && (keyCode == KeyCode.EMOJI || keyCode == KeyCode.LANGUAGE_SWITCH
                 || keyCode == KeyCode.SYMBOL)) {
             closeLookup()
@@ -532,6 +533,27 @@ class PinyinInputController(
         client.setOption("ascii_mode", true)
         asciiMode = true
         publishMode()
+    }
+
+    /**
+     * The globe key swaps 中文 and 英文 on this keyboard.
+     * Space-bar swipes stay on their usual actions. A password field keeps 英文,
+     * and the key falls through so it can still change language.
+     */
+    private fun onLatinToggle(): Boolean {
+        if (asciiLocked || failed || preparing || !ready) return false
+        if (lookupOpen) closeLookup()
+        if (asciiMode) {
+            client.setOption("ascii_mode", false)
+            asciiMode = false
+        } else {
+            endCompositionAsText()
+            client.setOption("ascii_mode", true)
+            asciiMode = true
+            ui.showNeutral()
+        }
+        publishMode()
+        return true
     }
 
     private fun onScriptToggle(): Boolean {
