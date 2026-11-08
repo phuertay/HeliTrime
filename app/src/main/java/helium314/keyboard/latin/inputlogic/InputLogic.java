@@ -157,6 +157,14 @@ public final class InputLogic {
      * @param settingsValues the current settings values
      */
     public void startInput(String combiningSpec, SettingsValues settingsValues) {
+        startInput(combiningSpec, settingsValues, true);
+    }
+
+    /**
+     * @param watchCursor false while a handwriting pad is open. Firefox restarts the input
+     * when cursor updates are requested, and that restart covers the pad's buttons.
+     */
+    public void startInput(String combiningSpec, SettingsValues settingsValues, boolean watchCursor) {
         mConnection.onStartInput();
         if (!mWordComposer.getTypedWord().isEmpty()) {
             // For messaging apps that offer send button, the IME does not get the opportunity
@@ -176,7 +184,7 @@ public final class InputLogic {
         mConnection.tryFixIncorrectCursorPosition();
         cancelDoubleSpacePeriodCountdown();
         mInputLogicHandler.reset();
-        mConnection.requestCursorUpdates(true, true);
+        if (watchCursor) mConnection.requestCursorUpdates(true, true);
         setInlineEmojiSearchAction(false);
     }
 

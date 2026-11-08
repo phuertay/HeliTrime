@@ -14,6 +14,8 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import helium314.keyboard.keyboard.KeyboardActionListener
 import helium314.keyboard.keyboard.KeyboardSwitcher
+import helium314.keyboard.keyboard.KeyboardView
+import kotlin.math.min
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
 import helium314.keyboard.latin.common.ColorType
@@ -139,8 +141,17 @@ class KeyboardWrapperView @JvmOverloads constructor(
         if (lookupOpen) lookup.layoutParams.height = 0
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         if (!lookupOpen) return
-        val keyboardHeight = KeyboardSwitcher.getInstance().visibleKeyboardView?.measuredHeight ?: 0
-        val height = if (keyboardHeight > 0) keyboardHeight else measuredHeight
+        // The key area, not the view. Firefox can measure the view as the whole
+        // window, and a pad that tall covers the suggestion buttons and the grid.
+        val keys = KeyboardSwitcher.getInstance().visibleKeyboardView
+        val occupied = (keys as? KeyboardView)?.keyboard?.mOccupiedHeight ?: 0
+        val measured = keys?.measuredHeight ?: 0
+        val height = when {
+            occupied > 0 && measured > 0 -> min(occupied, measured)
+            occupied > 0 -> occupied
+            measured > 0 -> measured
+            else -> measuredHeight
+        }
         if (height <= 0) return
         lookup.layoutParams.height = height
         lookup.measure(

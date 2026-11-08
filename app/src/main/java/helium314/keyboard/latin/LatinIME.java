@@ -940,7 +940,10 @@ public class LatinIME extends InputMethodService implements
             // span, so we should reset our state unconditionally, even if restarting is true.
             // We also tell the input logic about the combining rules for the current subtype, so
             // it can adjust its combiners if needed.
-            mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues);
+            // Cursor updates make Firefox restart the input. While 查 is open that
+            // restart hides the drawing buttons and the candidate grid.
+            final boolean keepPinyinLookup = mPinyinController != null && mPinyinController.isLookupOpen();
+            mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues, !keepPinyinLookup);
 
             resetDictionaryFacilitatorIfNecessary();
 
@@ -993,15 +996,23 @@ public class LatinIME extends InputMethodService implements
         // Set neutral suggestions and show the toolbar if the "Auto show toolbar" setting is enabled.
         if (!mHandler.hasPendingResumeSuggestions()) {
             mHandler.cancelUpdateSuggestionStrip();
-            setNeutralSuggestionStrip();
-            if (hasSuggestionStripView() && currentSettingsValues.mAutoShowToolbar && !tryShowClipboardSuggestion()) {
-                mSuggestionStripView.setToolbarVisibility(true);
+            // The restart above is what the Cursor page sends while a stroke is drawn.
+            // The neutral strip and the toolbar replace the drawing buttons.
+            final boolean keepPinyinLookup = mPinyinController != null && mPinyinController.shouldKeepStrip();
+            if (!keepPinyinLookup) {
+                setNeutralSuggestionStrip();
+                if (hasSuggestionStripView() && currentSettingsValues.mAutoShowToolbar && !tryShowClipboardSuggestion()) {
+                    mSuggestionStripView.setToolbarVisibility(true);
+                }
             }
         }
         // resetCaches runs above and a restart clears the composing span. Put the spelling
         // back after that, so the field still shows the whole pinyin.
         if (mPinyinController != null && restarting && !isDifferentTextField) {
             mPinyinController.restorePreedit();
+        }
+        if (mPinyinController != null && mPinyinController.isLookupOpen()) {
+            mPinyinController.onEditorRestarted();
         }
 
         mainKeyboardView.setMainDictionaryAvailability(mDictionaryFacilitator.hasAtLeastOneInitializedMainDictionary());

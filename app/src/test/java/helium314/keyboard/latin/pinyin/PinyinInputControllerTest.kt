@@ -430,6 +430,36 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun aRestartShowsTheDrawnPadAgain() {
+        val pending = ArrayList<() -> Unit>()
+        val controller = controller(
+            FakeRimeClient(), FakeEditor(),
+            deliver = { pending.add(it) },
+            hanzi = object : HanziIndex {
+                override fun radical(codePoint: Int) = 0
+                override fun strokeCount(codePoint: Int) = 0
+                override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) =
+                    listOf('人'.code)
+                override fun common() = intArrayOf('人'.code)
+                override fun radicalLabel(radical: Int, simplified: Boolean) = ""
+            },
+        )
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        pending.removeAt(0).invoke()
+        controller.onOpenLookup()
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        lookupRows = emptyList()
+        lookupStrokes = 0
+        controller.onEditorRestarted()
+        assertTrue(controller.isLookupOpen())
+        assertTrue(lookupPad)
+        assertEquals(1, lookupStrokes)
+        pending.removeAt(0).invoke()
+        assertEquals(listOf("人"), lookupRows.map { it.text })
+        assertEquals(1, lookupStrokes)
+    }
+
+    @Test
     fun aDrawingPickIsRememberedUnlessIncognito() {
         val file = java.io.File.createTempFile("ink-pick", ".txt")
         val memory = HandwritingMemory(file)
@@ -464,6 +494,7 @@ class PinyinInputControllerTest {
         script: PinyinScriptStore = MemoryScriptStore(),
         hanzi: HanziIndex = EmptyHanzi,
         starter: PinyinStarter = PinyinStarter { it() },
+        deliver: (block: () -> Unit) -> Unit = { it() },
         later: (Long, () -> Unit) -> Unit = { _, block -> block() },
         inkMemory: HandwritingMemory = HandwritingMemory.NONE,
     ): PinyinInputController {
@@ -488,7 +519,7 @@ class PinyinInputControllerTest {
             preparingText = "Preparing pinyin",
             failureText = "Pinyin failed to load",
             starter = starter,
-            deliver = { it() },
+            deliver = deliver,
             script = script,
             hanzi = hanzi,
             later = later,
