@@ -29,7 +29,8 @@ pin https://github.com/rime/rime-prelude.git rime-prelude 082425ea0684bca3647441
 pin https://github.com/rime/rime-luna-pinyin.git rime-luna-pinyin 56b934b099dfbeab842320f13aa8b461a6ab3e42
 pin https://github.com/rime/rime-essay.git rime-essay 054920de4f54c9e5994276a96a4fc2a35cb51aa3
 
-BOOST_URL="https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-cmake.tar.xz"
+# Asset 282335909 is boost-1.89.0-cmake.tar.xz. The release-page URL returns 504.
+BOOST_URL="https://api.github.com/repos/boostorg/boost/releases/assets/282335909"
 BOOST_SHA="67acec02d0d118b5de9eb441f5fb707b3a1cdd884be00ca24b9a73c995511f74"
 ICONV_URL="https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz"
 ICONV_SHA="3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
@@ -39,7 +40,15 @@ fetch() {
 }
 
 if [[ ! -f "${DEST}/boost/CMakeLists.txt" ]]; then
-  fetch "${DEST}/boost-1.89.0-cmake.tar.xz" "${BOOST_URL}"
+  token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  auth=()
+  if [[ -n "${token}" ]]; then
+    auth=(-H "Authorization: Bearer ${token}")
+  fi
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+    -H "Accept: application/octet-stream" \
+    "${auth[@]}" \
+    -L -o "${DEST}/boost-1.89.0-cmake.tar.xz" "${BOOST_URL}"
   echo "${BOOST_SHA}  ${DEST}/boost-1.89.0-cmake.tar.xz" | sha256sum -c -
   tar -xJf "${DEST}/boost-1.89.0-cmake.tar.xz" -C "${DEST}"
   mv "${DEST}/boost-1.89.0" "${DEST}/boost"
