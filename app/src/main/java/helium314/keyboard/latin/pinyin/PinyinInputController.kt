@@ -34,6 +34,7 @@ class PinyinInputController(
     private var plain = false
     private var restoring = false
     private var lookupOpen = false
+    private var shownLookup: LookupModel? = null
     private var passed = false
     private var committing = false
     private var padOpen = false
@@ -286,6 +287,18 @@ class PinyinInputController(
     }
 
     fun isLookupOpen(): Boolean = lookupOpen
+
+    /**
+     * Firefox restarts the input while the pad is open and the restart puts the toolbar
+     * over the drawing buttons. Show the same pad again, without waiting for a new score.
+     */
+    fun onEditorRestarted() {
+        if (!lookupOpen) return
+        val base = shownLookup ?: buildLookup(
+            menu, emptyList(), hanzi, simplified, radical, padOpen, widened, hasPreedit,
+        )
+        ui.showLookup(base.copy(strokes = ink.map { it.copyOf() }))
+    }
 
     fun onOpenLookup() {
         if (!lookupAvailable()) return
@@ -604,9 +617,11 @@ class PinyinInputController(
     private fun publishLookup() {
         val generation = ++lookupGeneration
         if (ink.isEmpty()) {
-            ui.showLookup(buildLookup(
+            val model = buildLookup(
                 menu, emptyList(), hanzi, simplified, radical, padOpen, widened, hasPreedit,
-            ))
+            )
+            shownLookup = model
+            ui.showLookup(model)
             return
         }
         // No spelling ranks every character. Show the line first. A late score for an older
@@ -633,6 +648,7 @@ class PinyinInputController(
                 }
                 deliver {
                     if (generation != lookupGeneration || !lookupOpen) return@deliver
+                    shownLookup = model
                     ui.showLookup(model)
                 }
             }
@@ -647,6 +663,7 @@ class PinyinInputController(
         widened = false
         radical = 0
         ink.clear()
+        shownLookup = null
         ui.hideLookup()
         if (!restoreStrip || !ready || failed || preparing) return
         val cached = shownSnapshot
