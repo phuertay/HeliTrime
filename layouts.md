@@ -1,3 +1,7 @@
+# Layouts
+
+Helitrime uses the same layout files as HeliBoard. Chinese (Pinyin) adds an apostrophe key and a long-press on comma labeled 简/繁. The notes below are otherwise unchanged.
+
 # A compilation of information about the layout formats usable in this app.
 
 There are two distinct formats:

@@ -60,6 +60,7 @@ import kotlin.math.min
 import androidx.core.view.isGone
 import helium314.keyboard.latin.utils.onClickToolbarKey
 import helium314.keyboard.latin.utils.onLongClickToolbarKey
+import helium314.keyboard.latin.pinyin.RimeCandidateRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
@@ -79,10 +80,14 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         fun removeSuggestion(word: String?)
         fun removeExternalSuggestions()
         fun onSwipeDownOnToolbar()
+        fun onRimePage(backward: Boolean)
+        fun onRimeLookup()
     }
 
     private val moreSuggestionsContainer: View
     private val wordViews = ArrayList<TextView>()
+    private var rimeLookupButton: TextView? = null
+    private var lookupActions: View? = null
     private val debugInfoViews = ArrayList<TextView>()
     private val dividerViews = ArrayList<View>()
 
@@ -194,7 +199,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
                     return true
                 }
 
-                return if (!isExternalSuggestionVisible && toolbarContainer.visibility != VISIBLE && deltaY > 0 && dy < (-10).dpToPx(resources)) showMoreSuggestions()
+                return if (!RimeCandidateRow.isRime(suggestedWords) && !isExternalSuggestionVisible && toolbarContainer.visibility != VISIBLE && deltaY > 0 && dy < (-10).dpToPx(resources)) showMoreSuggestions()
                 else false
             }
         }
@@ -239,15 +244,79 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         toolbarExpandKey.scaleX = (if (toolbarVisible) -1f else 1f) * direction
     }
 
+    fun showLookupActions(bar: View) {
+        lookupActions = bar
+        if (bar.parent === suggestionsStrip) return
+        placeLookupActions()
+    }
+
+    fun hideLookupActions() {
+        val bar = lookupActions
+        lookupActions = null
+        if (bar != null) (bar.parent as? ViewGroup)?.removeView(bar)
+    }
+
+    private fun placeLookupActions() {
+        val bar = lookupActions ?: return
+        clear()
+        setRimeLookupButton(false)
+        toolbarContainer.isVisible = false
+        pinnedKeys.isVisible = false
+        toolbarExpandKey.isVisible = false
+        suggestionsStrip.isVisible = true
+        (bar.parent as? ViewGroup)?.removeView(bar)
+        suggestionsStrip.addView(bar, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
+    }
+
     fun setSuggestions(suggestions: SuggestedWords, isRtlLanguage: Boolean) {
+        if (lookupActions != null) {
+            if (lookupActions?.parent !== suggestionsStrip) placeLookupActions()
+            return
+        }
         clear()
         setRtl(isRtlLanguage)
         suggestedWords = suggestions
+        if (RimeCandidateRow.isRime(suggestions)) {
+            setRimeLookupButton(false)
+            toolbarContainer.isVisible = false
+            toolbar.isVisible = false
+            pinnedKeys.isVisible = false
+            toolbarExpandKey.isVisible = false
+            suggestionsStrip.isVisible = true
+            RimeCandidateRow.bind(suggestionsStrip, suggestions,
+                { listener.pickSuggestionManually(it) },
+                { listener.onRimePage(it) },
+                { listener.onRimeLookup() })
+            isExternalSuggestionVisible = false
+            return
+        }
         startIndexOfMoreSuggestions = layoutHelper.layoutAndReturnStartIndexOfMoreSuggestions(
             context, suggestedWords, suggestionsStrip, this
         )
         isExternalSuggestionVisible = false
         updateKeys()
+    }
+
+    fun setRimeLookupButton(show: Boolean) {
+        if (!show) {
+            rimeLookupButton?.isVisible = false
+            return
+        }
+        val button = rimeLookupButton ?: TextView(context).also { view ->
+            view.text = "查"
+            view.gravity = android.view.Gravity.CENTER
+            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            view.setPadding(12.dpToPx(resources), 0, 12.dpToPx(resources), 0)
+            view.setOnClickListener { listener.onRimeLookup() }
+            val params = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
+            params.addRule(ALIGN_PARENT_END)
+            params.addRule(CENTER_VERTICAL)
+            addView(view, params)
+            rimeLookupButton = view
+        }
+        button.isVisible = true
+        button.bringToFront()
     }
 
     fun setExternalSuggestionView(view: View?, addCloseButton: Boolean) {
@@ -316,6 +385,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     override fun onInterceptTouchEvent(motionEvent: MotionEvent): Boolean {
+        if (RimeCandidateRow.isRime(suggestedWords)) return false
         // Detecting sliding up finger to show MoreSuggestionsView.
         return moreSuggestionsView.shouldInterceptTouchEvent(motionEvent)
     }
@@ -426,6 +496,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     private fun showMoreSuggestions(): Boolean {
+        if (RimeCandidateRow.isRime(suggestedWords)) return false
         if (suggestedWords.size <= startIndexOfMoreSuggestions) {
             return false
         }

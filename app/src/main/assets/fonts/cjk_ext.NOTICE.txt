@@ -1,0 +1,4 @@
+cjk_ext.ttf is a subset of Jigmo and Jigmo2 (2025-09-12).
+It holds the luna_pinyin and essay characters that Noto Sans CJK and Samsung SEC CJK do not.
+Source: https://kamichikoichi.github.io/jigmo/
+Glyphs from GlyphWiki. CC0 1.0. The legal text is cjk_ext.LICENSE.txt.

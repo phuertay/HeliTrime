@@ -1,0 +1,10 @@
+Trime JNI ideas
+
+The JNI shape for startup, process key, commit, context, select, deploy, and set option
+follows Trime (https://github.com/osfans/trime) tag v3.3.11.
+Trime is GPL-3.0-only, the same license as this app.
+This tree does not include Trime's keyboard, theme, or TrimeInputMethodService.
+
+essay.txt sources are listed in rime-essay-AUTHORS (Chewing LGPL, OpenCC Apache-2.0,
+Android Pinyin Apache-2.0, moedict CC0).
+libiconv is LGPL and is linked only as the shared library libiconv.so.

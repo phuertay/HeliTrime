@@ -9,10 +9,13 @@ import android.util.AttributeSet
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.View.MeasureSpec
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import helium314.keyboard.keyboard.KeyboardActionListener
 import helium314.keyboard.keyboard.KeyboardSwitcher
+import helium314.keyboard.keyboard.KeyboardView
+import kotlin.math.min
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
 import helium314.keyboard.latin.common.ColorType
@@ -129,6 +132,35 @@ class KeyboardWrapperView @JvmOverloads constructor(
         }
     }
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val lookup = findViewWithTag<View>(helium314.keyboard.latin.pinyin.LookupPanel.TAG)
+        val lookupOpen = lookup != null && lookup.visibility != View.GONE
+        // The wrapper is wrap_content. A match_parent panel otherwise measures to the full
+        // IME window, covers the editor, and the tap finishes the input connection.
+        // Firefox on the Cursor page does that; Keep does not. Measure the keys first.
+        if (lookupOpen) lookup.layoutParams.height = 0
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (!lookupOpen) return
+        // The key area, not the view. Firefox can measure the view as the whole
+        // window, and a pad that tall covers the suggestion buttons and the grid.
+        val keys = KeyboardSwitcher.getInstance().visibleKeyboardView
+        val occupied = (keys as? KeyboardView)?.keyboard?.mOccupiedHeight ?: 0
+        val measured = keys?.measuredHeight ?: 0
+        val height = when {
+            occupied > 0 && measured > 0 -> min(occupied, measured)
+            occupied > 0 -> occupied
+            measured > 0 -> measured
+            else -> measuredHeight
+        }
+        if (height <= 0) return
+        lookup.layoutParams.height = height
+        lookup.measure(
+            MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
+        )
+        if (measuredHeight != height) setMeasuredDimension(measuredWidth, height)
+    }
+
     @SuppressLint("RtlHardcoded")
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         if (!oneHandedModeEnabled) {
@@ -152,6 +184,8 @@ class KeyboardWrapperView @JvmOverloads constructor(
         val scale = Settings.getValues().mKeyboardHeightScale
         // scale one-handed mode button height if keyboard height scale is < 80%
         val heightScale = if (scale < 0.8f) scale + 0.2f else 1f
+        val lookup = findViewWithTag<View>(helium314.keyboard.latin.pinyin.LookupPanel.TAG)
+        lookup?.layout(0, 0, width, keyboardView.measuredHeight)
         val buttonsLeft = if (isLeftGravity) keyboardView.measuredWidth else 0
         val buttonXLeft = buttonsLeft + (spareWidth - stopOneHandedModeBtn.measuredWidth) / 2
         val buttonXRight = buttonsLeft + (spareWidth + stopOneHandedModeBtn.measuredWidth) / 2

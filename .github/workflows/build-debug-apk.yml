@@ -1,12 +1,18 @@
-name: Build debug APK
+name: Build release APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -22,18 +28,45 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # third_party/rime is gitignored. CMake stops without these pins.
+      - name: Fetch librime sources
+        run: bash tools/fetch_rime_sources.bash
+
       - name: Build with Gradle
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: HeliBoard-debug
-          path: app/build/outputs/apk/debug/*-debug*.apk
+      # The file Gradle writes is Helitrime_<version>-release.apk. The release
+      # asset is Helitrime_<version>.apk, the normal package, not a debug one.
+      - name: Publish the apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          apk=$(ls app/build/outputs/apk/release/*-release*.apk)
+          test -f "$apk"
+          version=$(basename "$apk")
+          version="${version#Helitrime_}"
+          version="${version%-release.apk}"
+          name="Helitrime_${version}.apk"
+          cp "$apk" "$name"
+          tag="v${version}"
+          notes=$(cat <<EOF | sed 's/^          //'
+          Normal build. Package helitrime001.keyboard. About says Version ${version}.
 
-      - name: Archive reports for failed job
-        uses: actions/upload-artifact@v4
-        with:
-          name: reports
-          path: '*/build/reports'
-        if: ${{ failure() }}
+          Signed with the checked-in debug key, so this replaces the previous Helitrime beta. Uninstall 4.3-beta1 first if that older copy is still installed. It used a different key.
+
+          The debug package is not published.
+
+          AI-assisted.
+          EOF
+          )
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$name" --clobber
+            gh release edit "$tag" --notes "$notes" --target "$RELEASE_SHA" --title "Helitrime ${version}" --latest
+          else
+            gh release create "$tag" "$name" --target "$RELEASE_SHA" --title "Helitrime ${version}" --latest --notes "$notes"
+          fi
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${name}"
+          echo "### Release APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "[${name}](${url})" >> "$GITHUB_STEP_SUMMARY"

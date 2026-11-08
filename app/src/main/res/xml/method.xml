@@ -1198,6 +1198,15 @@
         android:isAsciiCapable="true"
     />
     <subtype android:icon="@drawable/ic_ime_switcher"
+        android:label="@string/subtype_zh_CN"
+        android:subtypeId="0x0cfe2a53"
+        android:imeSubtypeLocale="zh_CN"
+        android:languageTag="zh-Hans-CN"
+        android:imeSubtypeMode="keyboard"
+        android:imeSubtypeExtraValue="AsciiCapable,EmojiCapable,KeyboardLayoutSet=MAIN:pinyin_qwerty,RimeSchema=luna_pinyin"
+        android:isAsciiCapable="true"
+    />
+    <subtype android:icon="@drawable/ic_ime_switcher"
         android:label="@string/subtype_no_language"
         android:subtypeId="0xa239ebad"
         android:imeSubtypeLocale="zz"

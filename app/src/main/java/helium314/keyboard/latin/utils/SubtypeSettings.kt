@@ -14,7 +14,9 @@ import helium314.keyboard.compat.locale
 import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.latin.RichInputMethodManager
 import helium314.keyboard.latin.common.Constants.Separators
+import helium314.keyboard.latin.common.Constants.Subtype.ExtraValue
 import helium314.keyboard.latin.common.LocaleUtils
+import helium314.keyboard.latin.pinyin.syncPinyinSubtype
 import helium314.keyboard.latin.define.DebugFlags
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
@@ -35,8 +37,11 @@ object SubtypeSettings {
 
     fun isEnabled(subtype: InputMethodSubtype?): Boolean = subtype in enabledSubtypes || subtype in getDefaultEnabledSubtypes()
 
-    fun getAllAvailableSubtypes(): List<InputMethodSubtype> =
-        resourceSubtypesByLocale.values.flatten() + additionalSubtypes
+    fun getAllAvailableSubtypes(): List<InputMethodSubtype> {
+        // The resource Chinese row is the one in the language list. The Tokel copy stays out of that list.
+        val extra = additionalSubtypes.filter { !it.containsExtraValueKey(ExtraValue.RIME_SCHEMA) }
+        return resourceSubtypesByLocale.values.flatten() + extra
+    }
 
     fun getMatchingMainLayoutNameForLocale(locale: Locale): String {
         val subtypes = resourceSubtypesByLocale.values.flatten()
@@ -50,6 +55,7 @@ object SubtypeSettings {
             ScriptUtils.SCRIPT_HEBREW -> "hebrew"
             ScriptUtils.SCRIPT_GEORGIAN -> "georgian"
             ScriptUtils.SCRIPT_BENGALI -> "bengali_unijoy"
+            ScriptUtils.SCRIPT_HAN, ScriptUtils.SCRIPT_HAN_SIMPLIFIED, ScriptUtils.SCRIPT_HAN_TRADITIONAL -> "pinyin_qwerty"
             else -> throw RuntimeException("Wrong script supplied: ${locale.script()}")
         }
     }
@@ -187,6 +193,7 @@ object SubtypeSettings {
     }
 
     fun reloadEnabledSubtypes(context: Context) {
+        syncPinyinSubtype(context.prefs())
         enabledSubtypes.clear()
         loadAdditionalSubtypes(context.prefs())
         loadEnabledSubtypes(context)
@@ -211,6 +218,7 @@ object SubtypeSettings {
         reloadSystemLocales(context)
 
         loadResourceSubtypes(context.resources)
+        syncPinyinSubtype(context.prefs())
         loadAdditionalSubtypes(context.prefs())
         loadEnabledSubtypes(context)
     }

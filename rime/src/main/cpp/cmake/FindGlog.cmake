@@ -1,0 +1,6 @@
+set(Glog_FOUND TRUE)
+set(Glog_LIBRARY glog)
+set(Glog_STATIC TRUE)
+if(TARGET glog::glog)
+  get_target_property(Glog_INCLUDE_PATH glog::glog INTERFACE_INCLUDE_DIRECTORIES)
+endif()

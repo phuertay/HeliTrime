@@ -1,3 +1,9 @@
+# Helitrime
+
+This repository is Helitrime, a HeliBoard fork. Work on pinyin and the Helitrime package happens here: https://github.com/phuertay/HeliTrime
+
+The notice below is HeliBoard's. It is about [HeliBorg/HeliBoard](https://github.com/HeliBorg/HeliBoard), not about opening a change on this fork. Do not send Helitrime changes to HeliBoard. That project rejects AI-written pull requests. Commits on this fork disclose AI assistance.
+
 # NOTICE
 
 **Currently it's not possible to open PRs. This is because I want to deal with existing PRs before migrating to Codeberg (https://github.com/HeliBorg/HeliBoard/issues/378), and this doesn't work for me while new PRs are coming in.**
@@ -5,7 +11,7 @@ Will re-open probably in (late) October or November.
 
 # Getting Started
 
-HeliBoard project is based on Gradle and Android Gradle Plugin. To get started, you can install [Android Studio](https://developer.android.com/studio), and import project 'from Version Control / Git / Github' by providing this git repository [URL](https://github.com/HeliBorg/HeliBoard) (or git SSH [URL](git@github.com:Helium314/heliboard.git)).
+HeliBoard project is based on Gradle and Android Gradle Plugin. To get started, you can install [Android Studio](https://developer.android.com/studio), and import this fork from [https://github.com/phuertay/HeliTrime](https://github.com/phuertay/HeliTrime). Upstream HeliBoard is [https://github.com/HeliBorg/HeliBoard](https://github.com/HeliBorg/HeliBoard).
 Of course you can also use any other compatible IDE, or work with text editor and command line.
 Once everything is up correctly, you're ready to go!
 

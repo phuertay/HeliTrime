@@ -1,30 +1,26 @@
-HeliBoard is a privacy-conscious open-source keyboard, based on AOSP / OpenBoard.
-Does not use internet permission, and thus is 100% offline.
+Helitrime is a privacy-conscious open-source keyboard. It is HeliBoard with 26-key pinyin and character lookup. It does not use the internet permission, so it stays offline.
 
-Features:
+The package is helitrime001.keyboard. Install the APK from this project's GitHub releases. HeliBoard from F-Droid is a different app.
+
+Pinyin:
 <ul>
-  <li>Add dictionaries for suggestions and spell check</li>
-  <ul>
-    <li>build your own, or get them  <a href="https://codeberg.org/Helium314/aosp-dictionaries#dictionaries">here</a>, or in the <a href="https://codeberg.org/Helium314/aosp-dictionaries#experimental-dictionaries">experimental</a> section (quality may vary)</li>
-    <li>additional dictionaries for emojis or scientific symbols can be used to provide suggestions (similar to "emoji search")</li>
-    <li>note that for Korean layouts, suggestions only work using <a href="https://github.com/openboard-team/openboard/commit/83fca9533c03b9fecc009fc632577226bbd6301f">this dictionary</a>, the tools in the dictionary repository are not able to create working dictionaries</li>
-  </ul>
-  <li>Customize keyboard themes (style, colors and background image)</li>
-  <ul>
-    <li>can follow the system's day/night setting on Android 10+ (and on some versions of Android 9)</li>
-    <li>can follow dynamic colors for Android 12+</li>
-  </ul>
-  <li>Customize keyboard <a href="https://github.com/HeliBorg/HeliBoard/blob/main/layouts.md">layouts</a> (only available when disabling <i>use system languages</i>)</li>
-  <li>Customize special layouts, like symbols, number,  or functional key layout</li>
-  <li>Multilingual typing</li>
-  <li>Glide typing (<i>only with closed source library</i> ☹️)</li>
-  <ul>
-    <li>library not included in the app, as there is no compatible open source library available</li>
-    <li>can be extracted from GApps packages ("<i>swypelibs</i>"), or downloaded <a href="https://github.com/erkserkserks/openboard/tree/46fdf2b550035ca69299ce312fa158e7ade36967/app/src/main/jniLibs">here</a> (click on the file and then "raw" or the tiny download button)</li>
-  </ul>
-  <li>Clipboard history</li>
-  <li>One-handed mode</li>
-  <li>Split keyboard (only available if the screen is large enough)</li>
-  <li>Number pad</li>
-  <li>Backup and restore your settings and learned word / history data</li>
+  <li>Type on a qwerty layout. An apostrophe key splits syllables</li>
+  <li>Space commits the first candidate. 1–9 and a tap commit another one</li>
+  <li>Long-press comma and choose 简/繁. The space bar shows 中文·简 or 中文·繁</li>
+  <li>查 looks a character up by radical or by handwriting</li>
+  <li>The globe key leaves Chinese for the next language</li>
+  <li>Password, email, and URI fields stay in ASCII</li>
+  <li>The Latin personal dictionary is not imported into the pinyin dictionary</li>
+</ul>
+
+Candidates come from luna_pinyin. Their order has not been tuned for this app.
+
+Also from HeliBoard:
+<ul>
+  <li>Dictionaries for suggestions and spell check</li>
+  <li>Themes, colors, and a background image, including day/night and dynamic colors</li>
+  <li>Custom layouts, multilingual typing, clipboard history</li>
+  <li>One-handed mode, a split keyboard, and a number pad</li>
+  <li>Glide typing only with a closed-source library, which is not included</li>
+  <li>Backup and restore of settings and learned words</li>
 </ul>

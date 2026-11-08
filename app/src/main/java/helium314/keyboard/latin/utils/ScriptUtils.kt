@@ -33,6 +33,9 @@ object ScriptUtils {
     const val SCRIPT_THAI = "Thai"
     const val SCRIPT_HANGUL = "Hang"
     const val SCRIPT_GUJARATI = "Gujr"
+    const val SCRIPT_HAN = "Hani"
+    const val SCRIPT_HAN_SIMPLIFIED = "Hans"
+    const val SCRIPT_HAN_TRADITIONAL = "Hant"
 
     @JvmStatic
     fun scriptSupportsUppercase(locale: Locale): Boolean {
@@ -146,6 +149,9 @@ object ScriptUtils {
             SCRIPT_GUJARATI ->
                 // Gujarati unicode block is U+0A80..U+0AFF
                 codePoint in 0xA80..0xAFF
+            // zh-Hans-CN. CJK is not a Latin dictionary letter. Returning false keeps the
+            // word breaker from throwing when the pinyin subtype is active.
+            SCRIPT_HAN, SCRIPT_HAN_SIMPLIFIED, SCRIPT_HAN_TRADITIONAL -> false
             SCRIPT_UNKNOWN -> true
             else -> throw RuntimeException("Unknown value of script: $script")
         }

@@ -19,7 +19,9 @@ import android.os.Debug;
 import android.os.Message;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
+import android.widget.FrameLayout;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InlineSuggestion;
@@ -41,7 +43,11 @@ import helium314.keyboard.keyboard.internal.KeyboardIconsSet;
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode;
 import helium314.keyboard.event.Event;
 import helium314.keyboard.event.InputTransaction;
+import helium314.keyboard.keyboard.Keyboard;
 import helium314.keyboard.keyboard.KeyboardId;
+import helium314.keyboard.latin.pinyin.PinyinControllersKt;
+import helium314.keyboard.latin.pinyin.PinyinInputController;
+import helium314.keyboard.latin.pinyin.PinyinSubtypeKt;
 import helium314.keyboard.keyboard.KeyboardLayoutSet;
 import helium314.keyboard.keyboard.KeyboardSwitcher;
 import helium314.keyboard.keyboard.MainKeyboardView;
@@ -114,6 +120,76 @@ public class LatinIME extends InputMethodService implements
             DictionaryFacilitatorProvider.getDictionaryFacilitator(false);
     private final DictionaryFacilitator mOriginalDictionaryFacilitator = mDictionaryFacilitator;
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
+    private PinyinInputController mPinyinController;
+    private helium314.keyboard.latin.pinyin.LookupPanel mLookupPanel;
+
+    public PinyinInputController getPinyinController() {
+        return mPinyinController;
+    }
+
+    public RichInputConnection pinyinConnection() {
+        return mInputLogic.mConnection;
+    }
+
+    public void pinyinInvalidateKeyboard() {
+        final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
+        if (view != null) view.invalidateAllKeys();
+    }
+
+    @Nullable
+    public helium314.keyboard.latin.pinyin.LookupPanel pinyinLookupPanel() {
+        if (mLookupPanel != null) return mLookupPanel;
+        final View wrapper = mKeyboardSwitcher.getWrapperView();
+        if (!(wrapper instanceof ViewGroup)) return null;
+        mLookupPanel = new helium314.keyboard.latin.pinyin.LookupPanel(this);
+        mLookupPanel.setVisibility(View.GONE);
+        ((ViewGroup) wrapper).addView(mLookupPanel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return mLookupPanel;
+    }
+
+    public void showPinyinLookupActions(final View bar) {
+        if (hasSuggestionStripView()) mSuggestionStripView.showLookupActions(bar);
+    }
+
+    public void hidePinyinLookupActions() {
+        if (hasSuggestionStripView()) mSuggestionStripView.hideLookupActions();
+    }
+
+    public boolean pinyinSymbolsLayer() {
+        final Keyboard keyboard = mKeyboardSwitcher.getKeyboard();
+        if (keyboard == null) return false;
+        return PinyinControllersKt.keyboardIsSymbols(keyboard.mId.getElement());
+    }
+
+    private void syncPinyinSession(final EditorInfo editorInfo, final boolean restarting,
+            final boolean differentField, final SettingsValues settings) {
+        final String extra = mRichImm.getCurrentSubtype().getRawSubtype().getExtraValue();
+        if (!PinyinSubtypeKt.isRimeSubtype(extra)) {
+            if (mPinyinController != null) {
+                mPinyinController.onLeaveSubtype();
+                mPinyinController = null;
+                refreshRimeLookupButton(false);
+            }
+            return;
+        }
+        if (mPinyinController == null) {
+            mPinyinController = PinyinControllersKt.createPinyinController(this);
+        }
+        mPinyinController.onStartInput(restarting && !differentField,
+                PinyinControllersKt.editorForcesAscii(editorInfo.inputType),
+                settings.mIncognitoModeEnabled);
+    }
+
+    @Override
+    public void onRimePage(final boolean backward) {
+        if (mPinyinController != null) mPinyinController.onPage(backward);
+    }
+
+    @Override
+    public void onRimeLookup() {
+        if (mPinyinController != null) mPinyinController.onOpenLookup();
+    }
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private SuggestionStripView mSuggestionStripView;
@@ -253,6 +329,9 @@ public class LatinIME extends InputMethodService implements
         public void postResumeSuggestions(final boolean shouldDelay) {
             final LatinIME latinIme = getOwnerInstance();
             if (latinIme == null) {
+                return;
+            }
+            if (PinyinSubtypeKt.isRimeSubtype(latinIme.mRichImm.getCurrentSubtype().getRawSubtype().getExtraValue())) {
                 return;
             }
             if (!latinIme.mSettings.getCurrent().needsToLookupSuggestions()) {
@@ -747,6 +826,10 @@ public class LatinIME extends InputMethodService implements
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
         }
         mSettings.saveSubtypeForApp(mRichImm.getCurrentSubtype(), getCurrentInputEditorInfo().packageName);
+        final EditorInfo editorInfo = getCurrentInputEditorInfo();
+        if (editorInfo != null) {
+            syncPinyinSession(editorInfo, true, false, mSettings.getCurrent());
+        }
     }
 
     /** alias to onCurrentInputMethodSubtypeChanged with a better name, as it's also used for internal switching */
@@ -806,6 +889,7 @@ public class LatinIME extends InputMethodService implements
             return;
         }
         Log.i(TAG, (restarting ? "Res" : "S") +"tarting input. Cursor position = " + editorInfo.initialSelStart + "," + editorInfo.initialSelEnd);
+        syncPinyinSession(editorInfo, restarting, isDifferentTextField, currentSettingsValues);
         if (DebugFlags.DEBUG_ENABLED) {
             EditorInfoCompatUtils.INSTANCE.debugLog(editorInfo, TAG);
         }
@@ -846,7 +930,10 @@ public class LatinIME extends InputMethodService implements
             // span, so we should reset our state unconditionally, even if restarting is true.
             // We also tell the input logic about the combining rules for the current subtype, so
             // it can adjust its combiners if needed.
-            mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues);
+            // Cursor updates make Firefox restart the input. While 查 is open that
+            // restart hides the drawing buttons and the candidate grid.
+            final boolean keepPinyinLookup = mPinyinController != null && mPinyinController.isLookupOpen();
+            mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues, !keepPinyinLookup);
 
             resetDictionaryFacilitatorIfNecessary();
 
@@ -899,10 +986,23 @@ public class LatinIME extends InputMethodService implements
         // Set neutral suggestions and show the toolbar if the "Auto show toolbar" setting is enabled.
         if (!mHandler.hasPendingResumeSuggestions()) {
             mHandler.cancelUpdateSuggestionStrip();
-            setNeutralSuggestionStrip();
-            if (hasSuggestionStripView() && currentSettingsValues.mAutoShowToolbar && !tryShowClipboardSuggestion()) {
-                mSuggestionStripView.setToolbarVisibility(true);
+            // The restart above is what the Cursor page sends while a stroke is drawn.
+            // The neutral strip and the toolbar replace the drawing buttons.
+            final boolean keepPinyinLookup = mPinyinController != null && mPinyinController.shouldKeepStrip();
+            if (!keepPinyinLookup) {
+                setNeutralSuggestionStrip();
+                if (hasSuggestionStripView() && currentSettingsValues.mAutoShowToolbar && !tryShowClipboardSuggestion()) {
+                    mSuggestionStripView.setToolbarVisibility(true);
+                }
             }
+        }
+        // resetCaches runs above and a restart clears the composing span. Put the spelling
+        // back after that, so the field still shows the whole pinyin.
+        if (mPinyinController != null && restarting && !isDifferentTextField) {
+            mPinyinController.restorePreedit();
+        }
+        if (mPinyinController != null && mPinyinController.isLookupOpen()) {
+            mPinyinController.onEditorRestarted();
         }
 
         mainKeyboardView.setMainDictionaryAvailability(mDictionaryFacilitator.hasAtLeastOneInitializedMainDictionary());
@@ -936,6 +1036,7 @@ public class LatinIME extends InputMethodService implements
 
     void onFinishInputInternal() {
         super.onFinishInput();
+        if (mPinyinController != null) mPinyinController.onFinishInput();
         Log.i(TAG, "onFinishInput");
 
         mDictionaryFacilitator.onFinishInput();
@@ -974,7 +1075,24 @@ public class LatinIME extends InputMethodService implements
         // not attempt recorrection. This is true even with a hardware keyboard connected: if the
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
-        SettingsValues settingsValues = mSettings.getCurrent();
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        if (mPinyinController != null) {
+            final boolean belated = mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart,
+                    newSelStart, oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd);
+            // Editors often echo setComposingText with composingSpanStart < 0. The cursor is
+            // still the one we just set, so this is not a tap elsewhere.
+            final boolean cursorWhereWeSetIt = newSelStart == newSelEnd && newSelStart >= 0
+                    && mInputLogic.mConnection.getExpectedSelectionStart() == newSelStart
+                    && mInputLogic.mConnection.getExpectedSelectionEnd() == newSelEnd;
+            // -1 when the editor omitted the span. A reported span uses its character length.
+            final int spanLength = composingSpanStart < 0 || composingSpanEnd < composingSpanStart
+                    ? -1 : composingSpanEnd - composingSpanStart;
+            final boolean cursorInside = newSelStart == newSelEnd && composingSpanStart >= 0
+                    && newSelStart >= composingSpanStart && newSelStart <= composingSpanEnd;
+            if (mPinyinController.onUpdateSelection(belated, cursorWhereWeSetIt, spanLength, cursorInside)) {
+                return;
+            }
+        }
         if (isInputViewShown()
                 && mInputLogic.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
                 composingSpanStart, composingSpanEnd, settingsValues)) {
@@ -1203,6 +1321,7 @@ public class LatinIME extends InputMethodService implements
 
     // called when language switch key is pressed (either the keyboard key, or long-press comma)
     public void switchToNextSubtype() {
+        if (mPinyinController != null) mPinyinController.onLeaveSubtype();
         final boolean switchSubtype = mSettings.getCurrent().mLanguageSwitchKeyToOtherSubtypes;
         final boolean switchIme = mSettings.getCurrent().mLanguageSwitchKeyToOtherImes;
 
@@ -1246,6 +1365,10 @@ public class LatinIME extends InputMethodService implements
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
             mRichImm.switchToShortcutIme(this);
         }
+        if (mPinyinController != null && mPinyinController.onEvent(event.getCodePoint(), event.getKeyCode(), pinyinSymbolsLayer())) {
+            mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+            return;
+        }
         InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
         updateStateAfterInputTransaction(completeInputTransaction);
@@ -1254,6 +1377,7 @@ public class LatinIME extends InputMethodService implements
 
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;
+        if (mPinyinController != null && mPinyinController.onText(rawText)) return;
         // TODO: have the keyboard pass the correct key code when we need it.
         Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
         InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
@@ -1263,7 +1387,27 @@ public class LatinIME extends InputMethodService implements
         mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
     }
 
+    /**
+     * Lookup tap. Same path as a popup key. By the click the editor has lost focus, so this
+     * runs on finger-down. If that connection is already gone, the one held from the last key
+     * still accepts the character.
+     */
+    public void commitPinyinText(final String rawText) {
+        if (rawText == null || rawText.isEmpty()) return;
+        if (getCurrentInputConnection() != null) {
+            final Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
+            final InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
+                    event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
+            updateStateAfterInputTransaction(completeInputTransaction);
+            return;
+        }
+        if (mInputLogic.mConnection.isConnected()) {
+            mInputLogic.mConnection.commitText(rawText, 1);
+        }
+    }
+
     public void onStartBatchInput() {
+        if (mPinyinController != null && mPinyinController.onStartBatchInput()) return;
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }
@@ -1328,6 +1472,7 @@ public class LatinIME extends InputMethodService implements
                 || noSuggestionsFromDictionaries) {
             mSuggestionStripView.setSuggestions(suggestedWords,
                     mRichImm.getCurrentSubtype().isRtlSubtype());
+            refreshRimeLookupButton(helium314.keyboard.latin.pinyin.RimeCandidateRow.INSTANCE.isRime(suggestedWords));
             // Auto hide the toolbar if dictionary suggestions are available
             if (currentSettingsValues.mAutoHideToolbar && !noSuggestionsFromDictionaries) {
                 mSuggestionStripView.setToolbarVisibility(false);
@@ -1362,6 +1507,10 @@ public class LatinIME extends InputMethodService implements
     // interface
     @Override
     public void pickSuggestionManually(SuggestedWordInfo suggestionInfo) {
+        if (suggestionInfo != null && suggestionInfo.isKindOf(SuggestedWordInfo.KIND_RIME)) {
+            if (mPinyinController != null) mPinyinController.onPick(suggestionInfo.mCandidateIndex);
+            return;
+        }
         InputTransaction completeInputTransaction = mInputLogic.onPickSuggestionManually(
                 mSettings.getCurrent(), suggestionInfo, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
         updateStateAfterInputTransaction(completeInputTransaction);
@@ -1388,11 +1537,13 @@ public class LatinIME extends InputMethodService implements
     // and there is a selection of text or it's the start of a line.
     @Override
     public void setNeutralSuggestionStrip() {
+        if (mPinyinController != null && mPinyinController.shouldKeepStrip()) return;
         final SettingsValues currentSettings = mSettings.getCurrent();
         if (tryShowClipboardSuggestion()) {
             // clipboard suggestion has been set
             if (hasSuggestionStripView() && currentSettings.mAutoHideToolbar)
                 mSuggestionStripView.setToolbarVisibility(false);
+            refreshRimeLookupButton(false);
             return;
         }
         final SuggestedWords neutralSuggestions = currentSettings.mSuggestPunctuation
@@ -1407,6 +1558,13 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(true);
             }
         }
+    }
+
+    private void refreshRimeLookupButton(final boolean rimeRow) {
+        if (!hasSuggestionStripView()) return;
+        final boolean show = mPinyinController != null && mPinyinController.lookupAvailable() && !rimeRow
+                && !mPinyinController.isLookupOpen();
+        mSuggestionStripView.setRimeLookupButton(show);
     }
 
     @Override
