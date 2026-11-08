@@ -34,15 +34,19 @@ BOOST_SHA="67acec02d0d118b5de9eb441f5fb707b3a1cdd884be00ca24b9a73c995511f74"
 ICONV_URL="https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz"
 ICONV_SHA="3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
 
+fetch() {
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o "$1" "$2"
+}
+
 if [[ ! -f "${DEST}/boost/CMakeLists.txt" ]]; then
-  curl -fsSL -o "${DEST}/boost-1.89.0-cmake.tar.xz" "${BOOST_URL}"
+  fetch "${DEST}/boost-1.89.0-cmake.tar.xz" "${BOOST_URL}"
   echo "${BOOST_SHA}  ${DEST}/boost-1.89.0-cmake.tar.xz" | sha256sum -c -
   tar -xJf "${DEST}/boost-1.89.0-cmake.tar.xz" -C "${DEST}"
   mv "${DEST}/boost-1.89.0" "${DEST}/boost"
 fi
 
 if [[ ! -f "${DEST}/libiconv/configure" ]]; then
-  curl -fsSL -o "${DEST}/libiconv-1.18.tar.gz" "${ICONV_URL}"
+  fetch "${DEST}/libiconv-1.18.tar.gz" "${ICONV_URL}"
   echo "${ICONV_SHA}  ${DEST}/libiconv-1.18.tar.gz" | sha256sum -c -
   tar -xzf "${DEST}/libiconv-1.18.tar.gz" -C "${DEST}"
   mv "${DEST}/libiconv-1.18" "${DEST}/libiconv"
