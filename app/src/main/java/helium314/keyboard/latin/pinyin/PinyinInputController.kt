@@ -40,6 +40,7 @@ class PinyinInputController(
     private val ink = ArrayList<FloatArray>()
     private var menu = emptyList<MenuChar>()
     private var menuFor: String? = null
+    private var shownSnapshot: RimeSnapshot? = null
     private var menuGeneration = 0
     private val pending = ArrayList<PendingKey>()
 
@@ -84,7 +85,6 @@ class PinyinInputController(
                 ready = started
                 if (!started) {
                     ui.showFailure(failureText)
-                    PinyinSpaceLabel.text = "英文"
                 } else {
                     applyScript(script.read())
                     publishMode()
@@ -97,28 +97,25 @@ class PinyinInputController(
 
     fun onFinishInput() {
         // The tap already passed the character. Finishing input drops the connection, so committing here never lands.
-        closeLookup()
+        closeLookup(restoreStrip = false)
         dropPreedit()
         client.destroySession()
         ready = false
         hasPreedit = false
         preeditLength = 0
-        PinyinSpaceLabel.text = null
     }
 
     fun onLeaveSubtype() {
-        closeLookup()
+        closeLookup(restoreStrip = false)
         endCompositionAsText()
         client.destroySession()
         ready = false
-        PinyinSpaceLabel.text = null
         ui.onModeChanged("")
     }
 
     /** @return true when the key was consumed */
     fun onEvent(codePoint: Int, keyCode: Int, symbolsLayer: Boolean): Boolean {
         if (keyCode == KeyCode.RIME_SCRIPT) return onScriptToggle()
-        if (keyCode == KeyCode.LANGUAGE_SWITCH && onLatinToggle()) return true
         if (lookupOpen && (keyCode == KeyCode.EMOJI || keyCode == KeyCode.LANGUAGE_SWITCH
                 || keyCode == KeyCode.SYMBOL)) {
             closeLookup()
@@ -237,6 +234,7 @@ class PinyinInputController(
         restoring = true
         try {
             showPreedit(snapshot.preedit)
+            shownSnapshot = snapshot
             ui.showCandidates(snapshot)
         } finally {
             restoring = false
@@ -252,6 +250,8 @@ class PinyinInputController(
     fun lookupAvailable(): Boolean {
         return ready && !failed && !preparing && !asciiMode && !asciiLocked
     }
+
+    fun isLookupOpen(): Boolean = lookupOpen
 
     fun onOpenLookup() {
         if (!lookupAvailable()) return
@@ -382,6 +382,7 @@ class PinyinInputController(
         }
         if (!asciiMode && snapshot.preedit.isNotEmpty()) {
             showPreedit(snapshot.preedit)
+            shownSnapshot = snapshot
             ui.showCandidates(snapshot)
         } else if (snapshot.preedit.isEmpty()) {
             if (hasPreedit && snapshot.commit.isEmpty()) erasePreedit()
@@ -389,6 +390,7 @@ class PinyinInputController(
             shown = ""
             hasPreedit = false
             preeditLength = 0
+            shownSnapshot = null
             ui.showNeutral()
         }
         publishMode()
@@ -407,6 +409,7 @@ class PinyinInputController(
         if (asciiMode) {
             hasPreedit = false
             preeditLength = 0
+            shownSnapshot = null
             ui.showNeutral()
             return
         }
@@ -415,12 +418,14 @@ class PinyinInputController(
             shown = snapshot.preedit
             hasPreedit = true
             preeditLength = snapshot.preedit.length
+            shownSnapshot = snapshot
             ui.showCandidates(snapshot)
         } else {
             plain = false
             shown = ""
             hasPreedit = false
             preeditLength = 0
+            shownSnapshot = null
             ui.showNeutral()
         }
     }
@@ -535,27 +540,6 @@ class PinyinInputController(
         publishMode()
     }
 
-    /**
-     * The globe key swaps 中文 and 英文 on this keyboard.
-     * Space-bar swipes stay on their usual actions. A password field keeps 英文,
-     * and the key falls through so it can still change language.
-     */
-    private fun onLatinToggle(): Boolean {
-        if (asciiLocked || failed || preparing || !ready) return false
-        if (lookupOpen) closeLookup()
-        if (asciiMode) {
-            client.setOption("ascii_mode", false)
-            asciiMode = false
-        } else {
-            endCompositionAsText()
-            client.setOption("ascii_mode", true)
-            asciiMode = true
-            ui.showNeutral()
-        }
-        publishMode()
-        return true
-    }
-
     private fun onScriptToggle(): Boolean {
         if (failed || asciiLocked) return true
         if (preparing || !ready) {
@@ -586,7 +570,7 @@ class PinyinInputController(
         ))
     }
 
-    private fun closeLookup() {
+    private fun closeLookup(restoreStrip: Boolean = true) {
         passed = false
         if (!lookupOpen) return
         lookupOpen = false
@@ -595,6 +579,13 @@ class PinyinInputController(
         radical = 0
         ink.clear()
         ui.hideLookup()
+        if (!restoreStrip || !ready || failed || preparing) return
+        val cached = shownSnapshot
+        if (!asciiMode && hasPreedit && cached != null && cached.preedit.isNotEmpty()) {
+            ui.showCandidates(cached)
+        } else {
+            ui.showNeutral()
+        }
     }
 
     /**
@@ -625,9 +616,7 @@ class PinyinInputController(
     }
 
     private fun publishMode() {
-        val label = if (asciiMode) "英文" else if (simplified) "中文·简" else "中文·繁"
-        PinyinSpaceLabel.text = label
-        ui.onModeChanged(label)
+        ui.onModeChanged("")
     }
 
     private data class PendingKey(val codePoint: Int, val keyCode: Int, val symbols: Boolean)

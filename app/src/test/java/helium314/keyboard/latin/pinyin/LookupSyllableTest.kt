@@ -10,6 +10,7 @@ import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -28,10 +29,13 @@ class LookupSyllableTest {
         panel.setModel(model(pad = false, LookupRow("你好", 0, 0, listOf("nǐ", "hǎo")), LookupRow("语", 0, 1, listOf("yǔ"))))
         val grid = texts(panel)
         assertTrue("nǐ" in grid && "hǎo" in grid && "yǔ" in grid, grid.toString())
+        assertTrue("写" !in grid && "×" !in grid, grid.toString())
+        assertEquals(listOf("写", "×"), texts(panel.actionBar()))
 
         panel.setModel(model(pad = true, LookupRow("人", -1, -1, listOf("rén"))))
         val writing = texts(panel)
         assertTrue("rén" in writing && "人" in writing, writing.toString())
+        assertEquals(listOf("⌫", "清", "全", "简", "⌨", "×"), texts(panel.actionBar()))
         assertTileShorterThan(panel, "人", 42)
     }
 

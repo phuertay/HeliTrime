@@ -72,10 +72,8 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         addView(scrollChips, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         buttons.orientation = HORIZONTAL
         buttons.gravity = Gravity.CENTER_VERTICAL or Gravity.END
-        // Top end, not the bottom-left. Samsung draws its IME switcher there and eats the taps.
-        addView(buttons, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            marginEnd = dp(4)
-        })
+        buttons.isFocusable = false
+        buttons.isFocusableInTouchMode = false
         scrollGrid.isFocusable = false
         scrollGrid.isFocusableInTouchMode = false
         grid.orientation = VERTICAL
@@ -98,6 +96,9 @@ class LookupPanel(context: Context) : LinearLayout(context) {
         ink.visibility = if (next.pad) VISIBLE else GONE
         bindButtons()
     }
+
+    /** 写, ×, and the pad controls. The strip hosts this row while 查 is open. */
+    fun actionBar(): View = buttons
 
     private fun bindChips() {
         chips.removeAllViews()
@@ -262,10 +263,12 @@ class LookupPanel(context: Context) : LinearLayout(context) {
     @SuppressLint("ClickableViewAccessibility")
     private fun button(label: String, onClick: () -> Unit) {
         val view = text(label, 16f)
-        view.setPadding(dp(14), dp(8), dp(14), dp(8))
+        view.includeFontPadding = false
+        view.minHeight = 0
+        view.setPadding(dp(12), 0, dp(12), 0)
         view.background = face(ColorType.FUNCTIONAL_KEY_BACKGROUND)
-        view.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-            marginEnd = dp(6)
+        view.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
+            marginEnd = dp(4)
         }
         view.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) onClick()

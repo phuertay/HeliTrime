@@ -70,8 +70,10 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
             panel.setModel(model)
             panel.visibility = View.VISIBLE
             panel.bringToFront()
+            ime.showPinyinLookupActions(panel.actionBar())
         }
         override fun hideLookup() {
+            ime.hidePinyinLookupActions()
             ime.pinyinLookupPanel()?.visibility = View.GONE
         }
     }
@@ -107,7 +109,7 @@ private class ControllerLookup(
     override fun onScript() = controller().onLookupScript()
 }
 
-/** Comma long-press offers 简/繁 on a pinyin subtype. Password, email, and URI stay 英文. */
+/** Comma long-press offers 简/繁 on a pinyin subtype. Password, email, and URI stay latin. */
 fun commaOffersScriptToggle(hasRimeSchema: Boolean, inputType: Int): Boolean =
     hasRimeSchema && !editorForcesAscii(inputType)
 

@@ -89,6 +89,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     private val moreSuggestionsContainer: View
     private val wordViews = ArrayList<TextView>()
     private var rimeLookupButton: TextView? = null
+    private var lookupActions: View? = null
     private val debugInfoViews = ArrayList<TextView>()
     private val dividerViews = ArrayList<View>()
 
@@ -245,7 +246,35 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         toolbarExpandKey.scaleX = (if (toolbarVisible) -1f else 1f) * direction
     }
 
+    fun showLookupActions(bar: View) {
+        lookupActions = bar
+        placeLookupActions()
+    }
+
+    fun hideLookupActions() {
+        val bar = lookupActions
+        lookupActions = null
+        if (bar != null) (bar.parent as? ViewGroup)?.removeView(bar)
+    }
+
+    private fun placeLookupActions() {
+        val bar = lookupActions ?: return
+        clear()
+        setRimeLookupButton(false)
+        toolbarContainer.isVisible = false
+        pinnedKeys.isVisible = false
+        toolbarExpandKey.isVisible = false
+        suggestionsStrip.isVisible = true
+        (bar.parent as? ViewGroup)?.removeView(bar)
+        suggestionsStrip.addView(bar, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
+    }
+
     fun setSuggestions(suggestions: SuggestedWords, isRtlLanguage: Boolean) {
+        if (lookupActions != null) {
+            placeLookupActions()
+            return
+        }
         clear()
         setRtl(isRtlLanguage)
         suggestedWords = suggestions
