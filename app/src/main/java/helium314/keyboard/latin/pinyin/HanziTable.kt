@@ -32,6 +32,7 @@ class HanziTable private constructor(
     private val toSimplified: Map<Int, Int>,
     private val toTraditional: Map<Int, IntArray>,
     private val readings: Array<String>,
+    private val frequency: IntArray,
 ) : HanziIndex {
     override fun radical(codePoint: Int): Int {
         val index = indexOf(codePoint)
@@ -68,9 +69,12 @@ class HanziTable private constructor(
             if (start < 0 || start > strokes.size - length) continue
             val model = strokes.copyOfRange(start, start + length)
             val score = matchScore(ink, model)
-            if (score != Int.MIN_VALUE) hits.add(codePoint to score)
+            if (score == Int.MIN_VALUE) continue
+            // 0..3. A clear direction miss is 6, so this only reorders a near tie.
+            val nudge = if (frequency.isEmpty()) 0 else frequency[index] / 64
+            hits.add(codePoint to score + nudge)
         }
-        return collapseHits(hits, simplified, ::displayOf)
+        return collapseHits(hits, simplified, HandwritingMemory.active::bonus, ::displayOf)
     }
 
     fun displayOf(codePoint: Int, simplified: Boolean): Int {
@@ -154,7 +158,21 @@ class HanziTable private constructor(
             return HanziTable(
                 codes, radicals, strokeAt, strokeLen, strokes, toSimplified, toTraditional,
                 readReadings(buffer, charCount),
+                readFrequency(buffer, charCount),
             )
+        }
+
+        /** FRQ1 trailer. One byte per character, 255 for the most common in essay.txt. */
+        private fun readFrequency(buffer: ByteBuffer, charCount: Int): IntArray {
+            val zeros = IntArray(charCount)
+            if (buffer.remaining() < 6) return zeros
+            val mark = ByteArray(4)
+            buffer.get(mark)
+            if (!mark.contentEquals(byteArrayOf('F'.code.toByte(), 'R'.code.toByte(), 'Q'.code.toByte(), '1'.code.toByte()))) {
+                return zeros
+            }
+            if (buffer.u16() != charCount) return zeros
+            return IntArray(charCount) { buffer.get().toInt() and 0xff }
         }
 
         /** RDG1 trailer. Older tables have no trailer and every reading is empty. */

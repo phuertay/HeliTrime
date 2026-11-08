@@ -8,26 +8,16 @@ import kotlin.math.min
 
 /**
  * One stroke, packed to match `tools/build_hanzi_lookup.py`.
- * Bits: direction 0–2, length bucket 3–4, start quadrant 5–6, 3×3 cell 7–10.
+ * Bits: direction 0–2, length bucket 3–4, start quadrant 5–6, 3×3 cell 7–10,
+ * bend direction 11–13, bend flag 14.
+ * The cell is where the stroke sits in the square, not in its own bounding box.
  * Y grows downward, the same way a finger does.
  */
+const val INK_SQUARE = 1000f
+
 fun inkFeatures(strokes: List<FloatArray>): IntArray {
-    var minX = Float.POSITIVE_INFINITY
-    var minY = Float.POSITIVE_INFINITY
-    var maxX = Float.NEGATIVE_INFINITY
-    var maxY = Float.NEGATIVE_INFINITY
-    for (stroke in strokes) {
-        var i = 0
-        while (i + 1 < stroke.size) {
-            minX = min(minX, stroke[i])
-            maxX = max(maxX, stroke[i])
-            minY = min(minY, stroke[i + 1])
-            maxY = max(maxY, stroke[i + 1])
-            i += 2
-        }
-    }
-    if (minX == Float.POSITIVE_INFINITY) return IntArray(0)
-    return IntArray(strokes.size) { packStroke(strokes[it], minX, minY, maxX, maxY) }
+    if (strokes.isEmpty()) return IntArray(0)
+    return IntArray(strokes.size) { packStroke(strokes[it], 0f, 0f, INK_SQUARE, INK_SQUARE) }
 }
 
 fun packStroke(stroke: FloatArray, minX: Float, minY: Float, maxX: Float, maxY: Float): Int {
@@ -37,9 +27,7 @@ fun packStroke(stroke: FloatArray, minX: Float, minY: Float, maxX: Float, maxY: 
     val y0 = stroke[1]
     val x1 = stroke[stroke.size - 2]
     val y1 = stroke[stroke.size - 1]
-    var angle = atan2(y1 - y0, x1 - x0)
-    if (angle < 0f) angle += (Math.PI * 2).toFloat()
-    val direction = (((angle + Math.PI / 8.0) / (Math.PI / 4.0)).toInt()) and 7
+    val direction = directionOf(x1 - x0, y1 - y0)
     var length = 0.0
     var i = 2
     while (i + 1 < stroke.size) {
@@ -71,7 +59,30 @@ fun packStroke(stroke: FloatArray, minX: Float, minY: Float, maxX: Float, maxY: 
     cy /= count
     val cellX = (((cx - minX) / width) * 3).toInt().coerceIn(0, 2)
     val cellY = (((cy - minY) / height) * 3).toInt().coerceIn(0, 2)
-    return direction or (bucket shl 3) or (quadrant shl 5) or ((cellY * 3 + cellX) shl 7)
+    return direction or (bucket shl 3) or (quadrant shl 5) or ((cellY * 3 + cellX) shl 7) or bendBits(stroke)
+}
+
+/** Head and tail disagree by 90° or more. A hook is not a straight line. */
+private fun bendBits(stroke: FloatArray): Int {
+    val points = stroke.size / 2
+    if (points < 3) return 0
+    val headAt = max(1, points / 3)
+    val tailAt = min(points - 2, (2 * points) / 3)
+    val head = directionOf(stroke[headAt * 2] - stroke[0], stroke[headAt * 2 + 1] - stroke[1])
+    val last = points - 1
+    val tail = directionOf(
+        stroke[last * 2] - stroke[tailAt * 2],
+        stroke[last * 2 + 1] - stroke[tailAt * 2 + 1],
+    )
+    if (directionDistance(head, tail) < 2) return 0
+    return (tail shl 11) or (1 shl 14)
+}
+
+private fun directionOf(dx: Float, dy: Float): Int {
+    if (dx == 0f && dy == 0f) return 0
+    var angle = atan2(dy, dx)
+    if (angle < 0f) angle += (Math.PI * 2).toFloat()
+    return (((angle + Math.PI / 8.0) / (Math.PI / 4.0)).toInt()) and 7
 }
 
 /**
@@ -96,6 +107,7 @@ fun matchScore(ink: IntArray, model: IntArray): Int {
 fun collapseHits(
     hits: List<Pair<Int, Int>>,
     simplified: Boolean,
+    bonus: (Int) -> Int = { 0 },
     display: (Int, Boolean) -> Int,
 ): List<Int> {
     val best = HashMap<Int, Int>()
@@ -103,12 +115,13 @@ fun collapseHits(
     for ((codePoint, score) in hits) {
         val shown = display(codePoint, simplified)
         if (shown == 0) continue
+        val total = score + bonus(shown)
         val previous = best[shown]
         if (previous == null) {
-            best[shown] = score
+            best[shown] = total
             order.add(shown)
-        } else if (score > previous) {
-            best[shown] = score
+        } else if (total > previous) {
+            best[shown] = total
         }
     }
     return order.sortedByDescending { best[it] ?: 0 }.take(48)
@@ -146,7 +159,12 @@ private fun strokeSimilarity(left: Int, right: Int): Int {
     val sameStart = ((left shr 5) and 3) == ((right shr 5) and 3)
     val quadrant = if (sameStart || reversed) 0 else 1
     val cell = cellDistance((left shr 7) and 15, (right shr 7) and 15)
-    return 40 - direction * 6 - length * 3 - quadrant * 4 - cell * 4
+    val bendL = (left shr 14) and 1
+    val bendR = (right shr 14) and 1
+    val bend = if (reversed || (bendL == 0 && bendR == 0)) 0
+    else if (bendL != bendR) 2
+    else directionDistance((left shr 11) and 7, (right shr 11) and 7)
+    return 40 - direction * 6 - length * 3 - quadrant * 4 - cell * 4 - bend * 3
 }
 
 private fun directionDistance(left: Int, right: Int): Int {

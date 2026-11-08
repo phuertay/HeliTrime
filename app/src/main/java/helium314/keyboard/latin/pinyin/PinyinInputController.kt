@@ -18,6 +18,7 @@ class PinyinInputController(
     private val script: PinyinScriptStore = MemoryScriptStore(),
     private val hanzi: HanziIndex = EmptyHanzi,
     private val later: (Long, () -> Unit) -> Unit = { _, block -> block() },
+    private val inkMemory: HandwritingMemory = HandwritingMemory.NONE,
 ) {
     private var asciiMode = false
     private var asciiLocked = false
@@ -49,6 +50,7 @@ class PinyinInputController(
     private val pending = ArrayList<PendingKey>()
 
     fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
+        inkMemory.learning = !incognitoNow
         // Firefox on the Cursor page restarts the input while 查 is open. That is the same
         // field, so the pad stays. A different field still drops it.
         if (lookupOpen && leaveToken != 0) {
@@ -383,6 +385,7 @@ class PinyinInputController(
     private fun pass(row: LookupRow) {
         if (!lookupOpen || passed || row.text.isEmpty()) return
         passed = true
+        if (ink.isNotEmpty()) inkMemory.remember(row.text)
         val text = if (row.page < 0) row.text else {
             val commit = client.selectOnPage(row.page, row.index)
             if (commit.isNotEmpty()) commit else row.text

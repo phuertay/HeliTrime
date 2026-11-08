@@ -430,6 +430,25 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun aDrawingPickIsRememberedUnlessIncognito() {
+        val file = java.io.File.createTempFile("ink-pick", ".txt")
+        val memory = HandwritingMemory(file)
+        val controller = controller(FakeRimeClient(), FakeEditor(), inkMemory = memory)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onOpenLookup()
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        controller.onLookupPick(LookupRow("人", -1, -1))
+        assertEquals(HandwritingMemory.BONUS, memory.bonus('人'.code))
+        val quiet = HandwritingMemory(file)
+        val hidden = controller(FakeRimeClient(), FakeEditor(), inkMemory = quiet)
+        hidden.onStartInput(keepSession = false, forceAscii = false, incognitoNow = true)
+        hidden.onOpenLookup()
+        hidden.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        hidden.onLookupPick(LookupRow("的", -1, -1))
+        assertEquals(0, quiet.bonus('的'.code))
+    }
+
+    @Test
     fun englishAndPasswordHideTheLookup() {
         val locked = controller(FakeRimeClient(), FakeEditor())
         locked.onStartInput(keepSession = false, forceAscii = true, incognitoNow = false)
@@ -446,6 +465,7 @@ class PinyinInputControllerTest {
         hanzi: HanziIndex = EmptyHanzi,
         starter: PinyinStarter = PinyinStarter { it() },
         later: (Long, () -> Unit) -> Unit = { _, block -> block() },
+        inkMemory: HandwritingMemory = HandwritingMemory.NONE,
     ): PinyinInputController {
         return PinyinInputController(
             client = client,
@@ -472,6 +492,7 @@ class PinyinInputControllerTest {
             script = script,
             hanzi = hanzi,
             later = later,
+            inkMemory = inkMemory,
         )
     }
 

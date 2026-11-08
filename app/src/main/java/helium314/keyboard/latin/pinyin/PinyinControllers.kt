@@ -92,6 +92,9 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         later = { delay, block -> main.postDelayed(block, delay) },
         script = PrefScriptStore(ime.prefs()),
         hanzi = HanziTable.open(ime.applicationContext),
+        inkMemory = HandwritingMemory(java.io.File(ime.filesDir, "rime/user/ink.txt")).also {
+            HandwritingMemory.active = it
+        },
     )
     box[0] = controller
     return controller
