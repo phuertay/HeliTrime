@@ -52,13 +52,11 @@ jobs:
           cp "$apk" "$name"
           tag="v${version}"
           notes=$(cat <<EOF | sed 's/^          //'
-          Normal build. Package helitrime001.keyboard. About says Version ${version}. versionCode 4305.
+          Normal build. Package helitrime001.keyboard. About says Version ${version}.
 
-          Signed with the checked-in debug key, so this replaces Helitrime 4.3-beta5. Uninstall 4.3-beta1 first if that older copy is still installed. It used a different key.
+          Signed with the checked-in debug key, so this replaces the previous Helitrime beta. Uninstall 4.3-beta1 first if that older copy is still installed. It used a different key.
 
-          The debug package is no longer published.
-
-          Pinyin lookup shows one toned syllable under each character. Handwriting keeps every stroke, ranks a bend and where the stroke sits in the square, and prefers a common or previously picked character. The Cursor page in Firefox no longer closes an empty writing pad.
+          The debug package is not published.
 
           AI-assisted.
           EOF
