@@ -13,8 +13,8 @@ android {
         applicationId = "helitrime001.keyboard"
         minSdk = 21
         targetSdk = 37
-        versionCode = 4304
-        versionName = "4.3-beta5"
+        versionCode = 4305
+        versionName = "4.3-beta6"
         ndk {
             abiFilters.clear()
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
@@ -39,6 +39,9 @@ android {
             isShrinkResources = false
             isDebuggable = false
             isJniDebuggable = false
+            // The published beta uses the checked-in debug key, so the next
+            // normal apk replaces the last one. There is no separate upload key.
+            signingConfig = signingConfigs.getByName("debug")
         }
         create("nouserlib") { // same as release, but does not allow the user to provide a library
             isMinifyEnabled = true
