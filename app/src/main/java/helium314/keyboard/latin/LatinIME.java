@@ -138,9 +138,10 @@ public class LatinIME extends InputMethodService implements
 
     @Nullable
     public helium314.keyboard.latin.pinyin.LookupPanel pinyinLookupPanel() {
-        if (mLookupPanel != null) return mLookupPanel;
         final View wrapper = mKeyboardSwitcher.getWrapperView();
         if (!(wrapper instanceof ViewGroup)) return null;
+        // A restart can rebuild the input view. The old pad is no longer on screen.
+        if (mLookupPanel != null && mLookupPanel.getParent() == wrapper) return mLookupPanel;
         mLookupPanel = new helium314.keyboard.latin.pinyin.LookupPanel(this);
         mLookupPanel.setVisibility(View.GONE);
         ((ViewGroup) wrapper).addView(mLookupPanel, new FrameLayout.LayoutParams(
@@ -163,7 +164,7 @@ public class LatinIME extends InputMethodService implements
     }
 
     private void syncPinyinSession(final EditorInfo editorInfo, final boolean restarting,
-            final boolean differentField, final SettingsValues settings) {
+            final boolean differentField, final SettingsValues settings, final String editorKey) {
         final String extra = mRichImm.getCurrentSubtype().getRawSubtype().getExtraValue();
         if (!PinyinSubtypeKt.isRimeSubtype(extra)) {
             if (mPinyinController != null) {
@@ -178,7 +179,8 @@ public class LatinIME extends InputMethodService implements
         }
         mPinyinController.onStartInput(restarting && !differentField,
                 PinyinControllersKt.editorForcesAscii(editorInfo.inputType),
-                settings.mIncognitoModeEnabled);
+                settings.mIncognitoModeEnabled,
+                editorKey);
     }
 
     @Override
@@ -828,7 +830,8 @@ public class LatinIME extends InputMethodService implements
         mSettings.saveSubtypeForApp(mRichImm.getCurrentSubtype(), getCurrentInputEditorInfo().packageName);
         final EditorInfo editorInfo = getCurrentInputEditorInfo();
         if (editorInfo != null) {
-            syncPinyinSession(editorInfo, true, false, mSettings.getCurrent());
+            syncPinyinSession(editorInfo, true, false, mSettings.getCurrent(),
+                    PinyinControllersKt.lookupEditorKey(editorInfo));
         }
     }
 
@@ -869,6 +872,12 @@ public class LatinIME extends InputMethodService implements
         SettingsValues currentSettingsValues = mSettings.getCurrent();
         boolean inputTypeChanged = !currentSettingsValues.isSameInputType(editorInfo);
         boolean isDifferentTextField = !restarting || inputTypeChanged;
+        // Firefox and Pleco report a new field when the caret blinks. 查 is still the same editor.
+        final String lookupEditorKey = editorInfo == null ? "" : PinyinControllersKt.lookupEditorKey(editorInfo);
+        if (!lookupEditorKey.isEmpty() && mPinyinController != null
+                && mPinyinController.continuesOpenLookup(lookupEditorKey)) {
+            isDifferentTextField = false;
+        }
 
         // we want to reload the settings before calling updateKeyboardTheme, because updateKeyboardTheme reads SettingsValues.mToolbarMode
         if (isDifferentTextField || !currentSettingsValues.hasSameOrientation(getResources().getConfiguration())) {
@@ -889,7 +898,7 @@ public class LatinIME extends InputMethodService implements
             return;
         }
         Log.i(TAG, (restarting ? "Res" : "S") +"tarting input. Cursor position = " + editorInfo.initialSelStart + "," + editorInfo.initialSelEnd);
-        syncPinyinSession(editorInfo, restarting, isDifferentTextField, currentSettingsValues);
+        syncPinyinSession(editorInfo, restarting, isDifferentTextField, currentSettingsValues, lookupEditorKey);
         if (DebugFlags.DEBUG_ENABLED) {
             EditorInfoCompatUtils.INSTANCE.debugLog(editorInfo, TAG);
         }
@@ -930,34 +939,39 @@ public class LatinIME extends InputMethodService implements
             // span, so we should reset our state unconditionally, even if restarting is true.
             // We also tell the input logic about the combining rules for the current subtype, so
             // it can adjust its combiners if needed.
-            // Cursor updates make Firefox restart the input. While 查 is open that
-            // restart hides the drawing buttons and the candidate grid.
+            // Cursor updates and a text read make Firefox and Pleco restart the input.
+            // While 查 is open that restart hides the drawing buttons and drops the stroke.
             final boolean keepPinyinLookup = mPinyinController != null && mPinyinController.isLookupOpen();
             mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues, !keepPinyinLookup);
 
-            resetDictionaryFacilitatorIfNecessary();
-
-            // TODO[IL]: Can the following be moved to InputLogic#startInput?
-            if (!mInputLogic.mConnection.resetCachesUponCursorMoveAndReturnSuccess(
-                    editorInfo.initialSelStart, editorInfo.initialSelEnd,
-                    false /* shouldFinishComposition */)) {
-                // Sometimes, while rotating, for some reason the framework tells the app we are not
-                // connected to it and that means we can't refresh the cache. In this case, schedule
-                // a refresh later.
-                // We try resetting the caches up to 5 times before giving up.
-                mHandler.postResetCaches(isDifferentTextField, 5 /* remainingTries */);
-                // mLastSelection{Start,End} are reset later in this method, no need to do it here
-                needToCallLoadKeyboardLater = true;
-            } else {
-                // When rotating, and when input is starting again in a field from where the focus
-                // didn't move (the keyboard having been closed with the back key),
-                // initialSelStart and initialSelEnd sometimes are lying. Make a best effort to
-                // work around this bug.
-                mInputLogic.mConnection.tryFixIncorrectCursorPosition();
-                if (mInputLogic.mConnection.isCursorTouchingWord(currentSettingsValues.mSpacingAndPunctuations, true)) {
-                    mHandler.postResumeSuggestions(true /* shouldDelay */);
-                }
+            if (keepPinyinLookup) {
+                // getTextBeforeCursor here is what makes those editors finish the input again.
                 needToCallLoadKeyboardLater = false;
+            } else {
+                resetDictionaryFacilitatorIfNecessary();
+
+                // TODO[IL]: Can the following be moved to InputLogic#startInput?
+                if (!mInputLogic.mConnection.resetCachesUponCursorMoveAndReturnSuccess(
+                        editorInfo.initialSelStart, editorInfo.initialSelEnd,
+                        false /* shouldFinishComposition */)) {
+                    // Sometimes, while rotating, for some reason the framework tells the app we are not
+                    // connected to it and that means we can't refresh the cache. In this case, schedule
+                    // a refresh later.
+                    // We try resetting the caches up to 5 times before giving up.
+                    mHandler.postResetCaches(isDifferentTextField, 5 /* remainingTries */);
+                    // mLastSelection{Start,End} are reset later in this method, no need to do it here
+                    needToCallLoadKeyboardLater = true;
+                } else {
+                    // When rotating, and when input is starting again in a field from where the focus
+                    // didn't move (the keyboard having been closed with the back key),
+                    // initialSelStart and initialSelEnd sometimes are lying. Make a best effort to
+                    // work around this bug.
+                    mInputLogic.mConnection.tryFixIncorrectCursorPosition();
+                    if (mInputLogic.mConnection.isCursorTouchingWord(currentSettingsValues.mSpacingAndPunctuations, true)) {
+                        mHandler.postResumeSuggestions(true /* shouldDelay */);
+                    }
+                    needToCallLoadKeyboardLater = false;
+                }
             }
         } else {
             // If we have a hardware keyboard we don't need to call loadKeyboard later anyway.
@@ -998,7 +1012,8 @@ public class LatinIME extends InputMethodService implements
         }
         // resetCaches runs above and a restart clears the composing span. Put the spelling
         // back after that, so the field still shows the whole pinyin.
-        if (mPinyinController != null && restarting && !isDifferentTextField) {
+        if (mPinyinController != null && !isDifferentTextField
+                && (restarting || mPinyinController.isLookupOpen())) {
             mPinyinController.restorePreedit();
         }
         if (mPinyinController != null && mPinyinController.isLookupOpen()) {

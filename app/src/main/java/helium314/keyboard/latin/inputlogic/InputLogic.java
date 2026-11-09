@@ -164,8 +164,9 @@ public final class InputLogic {
     }
 
     /**
-     * @param watchCursor false while a handwriting pad is open. Firefox restarts the input
-     * when cursor updates are requested, and that restart covers the pad's buttons.
+     * @param watchCursor false while a handwriting pad is open. Firefox and Pleco restart the
+     * input when cursor updates are requested or the field text is read, and that restart
+     * covers the pad's buttons and drops the drawing.
      */
     public void startInput(String combiningSpec, SettingsValues settingsValues, boolean watchCursor) {
         mConnection.onStartInput();
@@ -182,12 +183,14 @@ public final class InputLogic {
         mRecapitalizeStatus.disable(); // Do not perform recapitalize until the cursor is moved once
         mCurrentlyPressedHardwareKeys.clear();
         mSuggestedWords = SuggestedWords.getEmptyInstance();
-        // In some cases (e.g. after rotation of the device, or when scrolling the text before bringing up keyboard)
-        // editorInfo.initialSelStart is not the actual cursor position, so we try using some heuristics to find the correct position.
-        mConnection.tryFixIncorrectCursorPosition();
         cancelDoubleSpacePeriodCountdown();
         mInputLogicHandler.reset();
-        if (watchCursor) mConnection.requestCursorUpdates(true, true);
+        if (watchCursor) {
+            // In some cases (e.g. after rotation of the device, or when scrolling the text before bringing up keyboard)
+            // editorInfo.initialSelStart is not the actual cursor position, so we try using some heuristics to find the correct position.
+            mConnection.tryFixIncorrectCursorPosition();
+            mConnection.requestCursorUpdates(true, true);
+        }
         setInlineEmojiSearchAction(false);
     }
 
