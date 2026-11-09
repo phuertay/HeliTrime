@@ -1,5 +1,11 @@
 # Agent task: set up the Android SDK, then add 26-key pinyin
 
+When a change ships a build, the reply and the pull request lead with the release APK URL. The file is `Helitrime_<versionName>.apk` on tag `v<versionName>`:
+
+https://github.com/phuertay/HeliTrime/releases/download/v<versionName>/Helitrime_<versionName>.apk
+
+The release workflow publishes that file on push to `main` and to `cursor/**`.
+
 This file is the task. Do both jobs, in this order. Do not start Job 2 until Job 1's checks pass. Do not stop after Job 1.
 
 The product decision is already made. Do not reopen it.
