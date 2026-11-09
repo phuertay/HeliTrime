@@ -1,9 +1,12 @@
 package helium314.keyboard.latin.pinyin
 
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import helium314.keyboard.keyboard.KeyboardElement
 import helium314.keyboard.latin.LatinIME
@@ -147,6 +150,16 @@ fun editorForcesAscii(inputType: Int): Boolean {
     return InputTypeUtils.isPasswordInputType(inputType)
         || InputTypeUtils.isVisiblePasswordInputType(inputType)
         || InputTypeUtils.isUriOrEmailType(inputType)
+}
+
+/**
+ * Package, field, and the input class. Flag bits flicker on a Firefox restart, and a
+ * different password variation must not look like the same field.
+ */
+fun lookupEditorKey(editorInfo: EditorInfo): String {
+    val fieldId = if (Build.VERSION.SDK_INT >= 24) editorInfo.fieldId else 0
+    val masked = editorInfo.inputType and (InputType.TYPE_MASK_CLASS or InputType.TYPE_MASK_VARIATION)
+    return "${editorInfo.packageName.orEmpty()}|$fieldId|$masked"
 }
 
 /** Symbols and the numpad insert the key. They do not drive librime. */

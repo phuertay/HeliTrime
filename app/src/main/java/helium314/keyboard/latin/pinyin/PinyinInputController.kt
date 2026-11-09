@@ -47,19 +47,35 @@ class PinyinInputController(
     private var menuGeneration = 0
     @Volatile private var lookupGeneration = 0
     private var leaveToken = 0
+    private var editorKey = ""
     private val lookupLock = Any()
     private val pending = ArrayList<PendingKey>()
 
-    fun onStartInput(keepSession: Boolean, forceAscii: Boolean, incognitoNow: Boolean) {
+    /** Firefox and Pleco finish the input, then start it again with restarting false. */
+    fun continuesOpenLookup(editorKey: String): Boolean {
+        return lookupOpen && this.editorKey.isNotEmpty() && editorKey == this.editorKey
+    }
+
+    fun onStartInput(
+        keepSession: Boolean,
+        forceAscii: Boolean,
+        incognitoNow: Boolean,
+        editorKey: String? = null,
+    ) {
         inkMemory.learning = !incognitoNow
-        // Firefox on the Cursor page restarts the input while 查 is open. That is the same
-        // field, so the pad stays. A different field still drops it.
-        if (lookupOpen && leaveToken != 0) {
-            leaveToken++
-            if (!keepSession) finishNow()
-        }
+        // Firefox on the Cursor page, and Pleco's text field, finish the input and start
+        // it again while 查 is open. The framework reports that as a new field. The pad,
+        // the ink, and the score stay when the editor is the same one. A different field drops it.
+        val incoming = editorKey ?: this.editorKey
+        val sameEditor = this.editorKey.isNotEmpty() && incoming == this.editorKey
+        val editorChanged = editorKey != null && this.editorKey.isNotEmpty() && editorKey != this.editorKey
+        if (editorKey != null) this.editorKey = editorKey
         val incognitoChanged = ready && incognito != incognitoNow
-        if (keepSession && ready && !incognitoChanged && !failed) {
+        if (lookupOpen && (leaveToken != 0 || editorChanged)) {
+            if (leaveToken != 0) leaveToken++
+            if (!keepSession && !sameEditor) finishNow()
+        }
+        if ((keepSession || (lookupOpen && sameEditor)) && ready && !incognitoChanged && !failed) {
             asciiLocked = forceAscii
             if (forceAscii && !asciiMode) lockAscii()
             val saved = script.read()

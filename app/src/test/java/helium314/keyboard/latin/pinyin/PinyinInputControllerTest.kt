@@ -1,6 +1,7 @@
 package helium314.keyboard.latin.pinyin
 
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import helium314.keyboard.ShadowInputMethodManager2
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.KeyboardElement
@@ -19,6 +20,7 @@ import java.util.ArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -461,6 +463,78 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun sameEditorRestartKeepsTheDrawingAndItsCharacters() {
+        val pending = ArrayList<() -> Unit>()
+        val later = ArrayList<() -> Unit>()
+        val client = FakeRimeClient()
+        val firefox = "org.mozilla.firefox|4|1"
+        val controller = controller(
+            client, FakeEditor(),
+            hanzi = personHanzi(),
+            deliver = { pending.add(it) },
+            later = { _, block -> later.add(block) },
+        )
+        controller.onStartInput(false, false, false, firefox)
+        pending.removeAt(0).invoke()
+        controller.onOpenLookup()
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        controller.onFinishInput()
+        lookupRows = emptyList()
+        lookupStrokes = 0
+        // restarting is false. Firefox and Pleco both report a new field here.
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false, editorKey = firefox)
+        assertTrue(controller.isLookupOpen())
+        assertTrue(controller.continuesOpenLookup(firefox))
+        assertTrue(client.hasSession())
+        later.removeAt(0).invoke()
+        assertTrue(controller.isLookupOpen())
+        controller.onEditorRestarted()
+        assertTrue(lookupPad)
+        assertEquals(1, lookupStrokes)
+        pending.removeAt(0).invoke()
+        assertEquals(listOf("人"), lookupRows.map { it.text })
+        assertEquals(1, lookupStrokes)
+    }
+
+    @Test
+    fun aDifferentEditorDropsTheDrawing() {
+        val pending = ArrayList<() -> Unit>()
+        val pleco = "com.pleco.chinesesystem|1|1"
+        val controller = controller(
+            FakeRimeClient(), FakeEditor(),
+            hanzi = personHanzi(),
+            deliver = { pending.add(it) },
+            later = { _, block -> },
+        )
+        controller.onStartInput(false, false, false, pleco)
+        pending.removeAt(0).invoke()
+        controller.onOpenLookup()
+        controller.onLookupStroke(floatArrayOf(0f, 0f, 40f, 0f))
+        controller.onFinishInput()
+        controller.onStartInput(false, false, false, "org.mozilla.firefox|4|1")
+        assertFalse(controller.isLookupOpen())
+        assertFalse(controller.continuesOpenLookup(pleco))
+        pending.removeAt(0).invoke()
+        assertEquals(emptyList(), lookupRows.map { it.text })
+    }
+
+    @Test
+    fun editorKeyIgnoresTextFlags() {
+        val info = EditorInfo()
+        info.packageName = "org.mozilla.firefox"
+        info.fieldId = 4
+        info.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        val plain = lookupEditorKey(info)
+        info.inputType = info.inputType or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+        assertEquals(plain, lookupEditorKey(info))
+        info.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        assertNotEquals(plain, lookupEditorKey(info))
+        info.packageName = "com.pleco.chinesesystem"
+        info.inputType = InputType.TYPE_CLASS_TEXT
+        assertNotEquals(plain, lookupEditorKey(info))
+    }
+
+    @Test
     fun aDrawingPickIsRememberedUnlessIncognito() {
         val file = java.io.File.createTempFile("ink-pick", ".txt")
         val memory = HandwritingMemory(file)
@@ -526,6 +600,15 @@ class PinyinInputControllerTest {
             later = later,
             inkMemory = inkMemory,
         )
+    }
+
+    private fun personHanzi() = object : HanziIndex {
+        override fun radical(codePoint: Int) = 0
+        override fun strokeCount(codePoint: Int) = 0
+        override fun rank(ink: IntArray, pool: IntArray, simplified: Boolean, radical: Int) =
+            listOf('人'.code)
+        override fun common() = intArrayOf('人'.code)
+        override fun radicalLabel(radical: Int, simplified: Boolean) = ""
     }
 
     private fun latinInfo(word: String): SuggestedWordInfo {
