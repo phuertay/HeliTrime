@@ -121,6 +121,7 @@ class PinyinInputController(
                     applyScript(script.read())
                     publishMode()
                     publishStrip()
+                    adoptTrailingSpelling()
                     flushPending()
                 }
             }
@@ -457,23 +458,41 @@ class PinyinInputController(
 
     private fun commitPlain(text: String) {
         committing = true
+        val spelling = shown
         hasPreedit = false
         preeditLength = 0
         plain = false
         shown = ""
         try {
+            // Finish the underline first. Firefox replaces a spaced spelling with only the
+            // first character of a multi-character commit.
+            editor.finishComposingText()
+            val remove = lettersRemovedForCommit(editor.textBeforeCursor(spelling.length.coerceAtLeast(1)), spelling)
+            if (remove > 0) editor.deleteBefore(remove)
             editor.commitText(text)
         } finally {
             committing = false
         }
     }
 
+    /** Letters typed on the Latin keyboard become the pinyin spelling. */
+    private fun adoptTrailingSpelling() {
+        if (asciiMode || asciiLocked || hasPreedit) return
+        val spelling = trailingPinyin(editor.textBeforeCursor(24))
+        if (spelling.isEmpty()) return
+        committing = true
+        try {
+            editor.deleteBefore(spelling.length)
+            for (ch in spelling) client.processKey(RimeKeyMapper.lowercaseKeysym(ch.code), 0)
+        } finally {
+            committing = false
+        }
+        applySnapshot()
+    }
+
     private fun applySnapshot() {
         val snapshot = client.readSnapshot()
-        if (snapshot.commit.isNotEmpty()) {
-            if (plain) deleteShown()
-            commitPlain(snapshot.commit)
-        }
+        if (snapshot.commit.isNotEmpty()) commitPlain(snapshot.commit)
         if (!asciiMode && snapshot.preedit.isNotEmpty()) {
             showPreedit(snapshot.preedit)
             shownSnapshot = snapshot
@@ -791,3 +810,93 @@ class PinyinInputController(
 internal fun spellingWithoutSyllableSpaces(preedit: String): String = buildString(preedit.length) {
     for (ch in preedit) if (ch != ' ') append(ch)
 }
+
+/**
+ * How many characters at the end of [before] belong to [spelling].
+ * Firefox may have kept only the first syllable of "zhe ge".
+ */
+internal fun lettersRemovedForCommit(before: String, spelling: String): Int {
+    if (spelling.isEmpty() || before.isEmpty()) return 0
+    val compact = spellingWithoutSyllableSpaces(spelling)
+    val forms = if (compact == spelling) listOf(spelling) else listOf(spelling, compact)
+    var best = 0
+    for (form in forms) {
+        val limit = minOf(before.length, form.length)
+        var n = limit
+        while (n > best) {
+            if (before.endsWith(form.substring(0, n))) {
+                best = n
+                break
+            }
+            n--
+        }
+    }
+    val tail = spelling.substringAfterLast(' ')
+    if (tail != spelling && tail.isNotEmpty() && before.endsWith(tail)) best = maxOf(best, tail.length)
+    return best
+}
+
+/** The Latin word at the cursor, when it is pinyin. Empty otherwise. */
+internal fun trailingPinyin(before: String): String {
+    var start = before.length
+    while (start > 0) {
+        val ch = before[start - 1]
+        if (ch !in 'a'..'z' && ch !in 'A'..'Z' && ch != '\'') break
+        start--
+    }
+    val word = before.substring(start)
+    if (word.isEmpty() || word.length > 16 || word.all { it == '\'' }) return ""
+    return if (canTypePinyin(word.lowercase())) word else ""
+}
+
+internal fun canTypePinyin(raw: String): Boolean {
+    val text = raw.lowercase()
+    if (text.isEmpty() || text.length > 16) return false
+    val n = text.length
+    val reached = BooleanArray(n + 1)
+    reached[0] = true
+    for (i in 0 until n) {
+        if (!reached[i]) continue
+        if (text[i] == '\'') {
+            reached[i + 1] = true
+            continue
+        }
+        val limit = minOf(6, n - i)
+        for (len in 1..limit) {
+            if (text.substring(i, i + len) in PINYIN_SYLLABLES) reached[i + len] = true
+        }
+    }
+    if (reached[n]) return true
+    for (i in 0 until n) {
+        if (!reached[i]) continue
+        val tail = text.substring(i)
+        if (tail.length <= 6 && PINYIN_SYLLABLES.any { it.startsWith(tail) }) return true
+    }
+    return false
+}
+
+private val PINYIN_SYLLABLES = """
+a ai an ang ao ba bai ban bang bao bei ben beng bi bian biao bie bin bing bo bu
+ca cai can cang cao ce cen ceng cha chai chan chang chao che chen cheng chi chong chou chu
+chua chuai chuan chuang chui chun chuo ci cong cou cu cuan cui cun cuo
+da dai dan dang dao de dei den deng di dia dian diao die ding diu dong dou du duan dui dun duo
+e ei en eng er fa fan fang fei fen feng fo fou fu
+ga gai gan gang gao ge gei gen geng gong gou gu gua guai guan guang gui gun guo
+ha hai han hang hao he hei hen heng hong hou hu hua huai huan huang hui hun huo
+ji jia jian jiang jiao jie jin jing jiong jiu ju juan jue jun
+ka kai kan kang kao ke ken keng kong kou ku kua kuai kuan kuang kui kun kuo
+la lai lan lang lao le lei leng li lia lian liang liao lie lin ling liu lo long lou lu luan lue lun luo lv lve
+ma mai man mang mao me mei men meng mi mian miao mie min ming miu mo mou mu
+na nai nan nang nao ne nei nen neng ni nian niang niao nie nin ning niu nong nou nu nuan nve nuo nv
+o ou pa pai pan pang pao pei pen peng pi pian piao pie pin ping po pou pu
+qi qia qian qiang qiao qie qin qing qiong qiu qu quan que qun
+ran rang rao re ren reng ri rong rou ru rua ruan rui run ruo
+sa sai san sang sao se sen seng sha shai shan shang shao she shei shen sheng shi shou shu
+shua shuai shuan shuang shui shun shuo si song sou su suan sui sun suo
+ta tai tan tang tao te teng ti tian tiao tie ting tong tou tu tuan tui tun tuo
+wa wai wan wang wei wen weng wo wu
+xi xia xian xiang xiao xie xin xing xiong xiu xu xuan xue xun
+ya yan yang yao ye yi yin ying yo yong you yu yuan yue yun
+za zai zan zang zao ze zei zen zeng zha zhai zhan zhang zhao zhe zhei zhen zheng zhi zhong zhou zhu
+zhua zhuai zhuan zhuang zhui zhun zhuo zi zong zou zu zuan zui zun zuo
+""".trim().split(Regex("\\s+")).toHashSet()

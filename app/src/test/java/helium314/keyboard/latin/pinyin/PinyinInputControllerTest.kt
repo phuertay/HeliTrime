@@ -270,6 +270,40 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun choosingZheGeCommitsBothCharacters() {
+        assertEquals(6, lettersRemovedForCommit("zhe ge", "zhe ge"))
+        assertEquals(3, lettersRemovedForCommit("zhe", "zhe ge"))
+        assertEquals(5, lettersRemovedForCommit("zhege", "zhe ge"))
+        val client = FakeRimeClient()
+        client.shown = "zhe ge"
+        client.pages = listOf(listOf(RimeCandidate("这个", "zhe ge")))
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('z'.code, 0, false)
+        editor.composing = "zhe"
+        editor.committed = ""
+        controller.onPick(0)
+        assertEquals("这个", editor.committed)
+        assertEquals("", editor.composing)
+    }
+
+    @Test
+    fun latinZheBecomesPinyinWhenTheKeyboardSwitches() {
+        assertEquals("zhe", trailingPinyin("say zhe"))
+        assertEquals("zh", trailingPinyin("zh"))
+        assertEquals("", trailingPinyin("say hello"))
+        assertEquals("", trailingPinyin("say the"))
+        val editor = FakeEditor()
+        editor.committed = "say zhe"
+        val controller = controller(FakeRimeClient(), editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertEquals("say ", editor.committed)
+        assertEquals("zhe", editor.composing)
+        assertTrue(stripMenu.isNotEmpty() || strip == "zhe")
+    }
+
+    @Test
     fun spacedSpellingStillOpensTheCharacterGrid() {
         val client = FakeRimeClient()
         client.shown = "zhe ge"
@@ -846,6 +880,7 @@ private class FakeRimeClient : RimeClient {
         if (index !in list.indices) return false
         commit = list[index].text
         raw = ""
+        shown = null
         return true
     }
 
