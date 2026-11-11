@@ -7,6 +7,7 @@ interface PinyinEditor {
 
     /** Live field text, not the keyboard's cache. Firefox can disagree with the cache. */
     fun textBeforeCursor(n: Int): String
+    fun textAfterCursor(n: Int): String
 
     /** True when the spelling is still somewhere in the field. */
     fun contains(text: String): Boolean
@@ -15,6 +16,7 @@ interface PinyinEditor {
     fun commitRaw(text: String)
 
     fun deleteBefore(n: Int)
+    fun deleteAfter(n: Int)
 }
 
 interface PinyinUi {

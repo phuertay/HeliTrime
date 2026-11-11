@@ -134,7 +134,7 @@ class PinyinInputControllerTest {
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
         client.shown = "ni hao"
         controller.onEvent('n'.code, 0, false)
-        assertEquals("ni hao", editor.composing)
+        assertEquals("nihao", editor.composing)
         controller.onLeaveSubtype()
         assertEquals("nihao", editor.finishedText)
         assertEquals("", editor.composing)
@@ -274,6 +274,8 @@ class PinyinInputControllerTest {
         assertEquals(6, lettersRemovedForCommit("zhe ge", "zhe ge"))
         assertEquals(3, lettersRemovedForCommit("zhe", "zhe ge"))
         assertEquals(5, lettersRemovedForCommit("zhege", "zhe ge"))
+        assertEquals(3 to 2, spellingAroundCursor("zhe", "ge", "zhe ge"))
+        assertEquals(5 to 0, spellingAroundCursor("zhege", "", "zhe ge"))
         val client = FakeRimeClient()
         client.shown = "zhe ge"
         client.pages = listOf(listOf(RimeCandidate("这个", "zhe ge")))
@@ -283,9 +285,11 @@ class PinyinInputControllerTest {
         controller.onEvent('z'.code, 0, false)
         editor.composing = "zhe"
         editor.committed = ""
+        editor.afterOverride = "ge"
         controller.onPick(0)
         assertEquals("这个", editor.committed)
         assertEquals("", editor.composing)
+        assertEquals("", editor.afterOverride)
     }
 
     @Test
@@ -792,6 +796,7 @@ private class FakeEditor : PinyinEditor {
     var wipedAfterFinish = false
     var onFinished: (() -> Unit)? = null
     var beforeOverride: String? = null
+    var afterOverride: String? = null
 
     override fun setComposingText(text: String) {
         if (finished && text.isEmpty()) wipedAfterFinish = true
@@ -814,6 +819,14 @@ private class FakeEditor : PinyinEditor {
     override fun textBeforeCursor(n: Int): String {
         beforeOverride?.let { return it.takeLast(n) }
         return (committed + composing).takeLast(n)
+    }
+
+    override fun textAfterCursor(n: Int): String = (afterOverride ?: "").take(n)
+
+    override fun deleteAfter(n: Int) {
+        if (n <= 0) return
+        val after = afterOverride ?: return
+        afterOverride = after.drop(n.coerceAtMost(after.length))
     }
 
     override fun contains(text: String): Boolean {

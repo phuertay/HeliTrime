@@ -31,6 +31,8 @@ class PinyinInputController(
     private var hasPreedit = false
     private var preeditLength = 0
     private var shown = ""
+    /** Rime's preedit, including the syllable space the editor does not show. */
+    private var rawPreedit = ""
     /** The page dropped the underline. The spelling is ordinary text until this word ends. */
     private var plain = false
     private var restoring = false
@@ -226,20 +228,15 @@ class PinyinInputController(
     @JvmOverloads
     fun onPick(index: Int, page: Int = 0): Boolean {
         if (!ready || failed || asciiMode || index < 0) return false
-        if (page <= 0) {
-            client.selectCandidate(index)
-            applySnapshot()
-            return true
-        }
-        val text = client.selectOnPage(page, index)
+        // The strip lists every page. The session may be on another page while that list
+        // is still being built, so the index has to be read from the page the button names.
+        val text = client.selectOnPage(page.coerceAtLeast(0), index)
         if (text.isEmpty()) return false
         commitPlain(text)
         val snapshot = client.readSnapshot()
         if (snapshot.preedit.isNotEmpty()) {
             showPreedit(snapshot.preedit)
             shownSnapshot = snapshot
-            hasPreedit = true
-            preeditLength = snapshot.preedit.length
             dropMenu()
             ui.showCandidates(snapshot)
             ensureMenu(snapshot.preedit)
@@ -348,7 +345,7 @@ class PinyinInputController(
         ink.clear()
         if (hasPreedit) {
             // shown is enough. readSnapshot waits behind the page walk and leaves the grid empty.
-            val preedit = shown.ifEmpty { client.readSnapshot().preedit }
+            val preedit = rawPreedit.ifEmpty { shown.ifEmpty { client.readSnapshot().preedit } }
             if (preedit.isNotEmpty()) ensureMenu(preedit) else dropMenu()
             if (menu.isEmpty()) seedMenuFromShown()
         } else {
@@ -463,13 +460,25 @@ class PinyinInputController(
         preeditLength = 0
         plain = false
         shown = ""
+        rawPreedit = ""
         try {
-            // Finish the underline first. Firefox replaces a spaced spelling with only the
-            // first character of a multi-character commit.
+            // End the underline before inserting. Firefox keeps only the first character of a
+            // multi-character commit, and a space in the spelling leaves the next syllable behind.
             editor.finishComposingText()
-            val remove = lettersRemovedForCommit(editor.textBeforeCursor(spelling.length.coerceAtLeast(1)), spelling)
-            if (remove > 0) editor.deleteBefore(remove)
-            editor.commitText(text)
+            val window = spelling.length.coerceAtLeast(1) + 8
+            val (dropBefore, dropAfter) = spellingAroundCursor(
+                editor.textBeforeCursor(window),
+                editor.textAfterCursor(window),
+                spelling,
+            )
+            if (dropBefore > 0) editor.deleteBefore(dropBefore)
+            if (dropAfter > 0) editor.deleteAfter(dropAfter)
+            var offset = 0
+            while (offset < text.length) {
+                val code = text.codePointAt(offset)
+                editor.commitRaw(String(Character.toChars(code)))
+                offset += Character.charCount(code)
+            }
         } finally {
             committing = false
         }
@@ -501,6 +510,7 @@ class PinyinInputController(
             if (hasPreedit && snapshot.commit.isEmpty()) erasePreedit()
             plain = false
             shown = ""
+            rawPreedit = ""
             hasPreedit = false
             preeditLength = 0
             shownSnapshot = null
@@ -529,15 +539,14 @@ class PinyinInputController(
         }
         val snapshot = client.readSnapshot()
         if (snapshot.preedit.isNotEmpty()) {
-            shown = snapshot.preedit
-            hasPreedit = true
-            preeditLength = snapshot.preedit.length
+            showPreedit(snapshot.preedit)
             shownSnapshot = snapshot
             showStripFor(snapshot)
             ensureMenu(snapshot.preedit)
         } else {
             plain = false
             shown = ""
+            rawPreedit = ""
             hasPreedit = false
             preeditLength = 0
             shownSnapshot = null
@@ -570,15 +579,20 @@ class PinyinInputController(
             committing = false
             plain = false
             shown = ""
+            rawPreedit = ""
         }
         dropMenu()
     }
 
     private fun showPreedit(preedit: String) {
-        if (plain) replacePlain(preedit) else editor.setComposingText(preedit)
-        shown = preedit
-        hasPreedit = preedit.isNotEmpty()
-        preeditLength = preedit.length
+        // The syllable space is Rime's, not the user's. Firefox ends the underline at that space,
+        // so choosing 这个 replaces "zhe" and leaves "ge".
+        val spelling = spellingWithoutSyllableSpaces(preedit)
+        if (plain) replacePlain(spelling) else editor.setComposingText(spelling)
+        shown = spelling
+        rawPreedit = preedit
+        hasPreedit = spelling.isNotEmpty()
+        preeditLength = spelling.length
     }
 
     /** Firefox removed the composing span. Keep the letters as normal text. */
@@ -659,6 +673,7 @@ class PinyinInputController(
         preeditLength = 0
         plain = false
         shown = ""
+        rawPreedit = ""
         dropMenu()
     }
 
@@ -669,6 +684,7 @@ class PinyinInputController(
         preeditLength = 0
         plain = false
         shown = ""
+        rawPreedit = ""
         dropMenu()
     }
 
@@ -834,6 +850,34 @@ internal fun lettersRemovedForCommit(before: String, spelling: String): Int {
     val tail = spelling.substringAfterLast(' ')
     if (tail != spelling && tail.isNotEmpty() && before.endsWith(tail)) best = maxOf(best, tail.length)
     return best
+}
+
+/**
+ * How much of [spelling] sits around the cursor. Firefox can leave "ge" after the cursor
+ * when the underline broke on the syllable space in "zhe ge".
+ */
+internal fun spellingAroundCursor(before: String, after: String, spelling: String): Pair<Int, Int> {
+    if (spelling.isEmpty()) return 0 to 0
+    val compact = spellingWithoutSyllableSpaces(spelling)
+    val forms = if (compact == spelling) listOf(spelling) else listOf(spelling, compact)
+    var bestBefore = 0
+    var bestAfter = 0
+    var best = 0
+    for (form in forms) {
+        for (split in 0..form.length) {
+            val head = form.substring(0, split)
+            val tail = form.substring(split)
+            if (head.isNotEmpty() && !before.endsWith(head)) continue
+            if (tail.isNotEmpty() && !after.startsWith(tail)) continue
+            val covered = head.length + tail.length
+            if (covered > best) {
+                best = covered
+                bestBefore = head.length
+                bestAfter = tail.length
+            }
+        }
+    }
+    return bestBefore to bestAfter
 }
 
 /** The Latin word at the cursor, when it is pinyin. Empty otherwise. */
