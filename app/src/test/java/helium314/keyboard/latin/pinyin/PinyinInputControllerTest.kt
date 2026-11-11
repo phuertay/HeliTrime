@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.TextView
 import helium314.keyboard.ShadowInputMethodManager2
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.KeyboardElement
@@ -240,73 +241,72 @@ class PinyinInputControllerTest {
         val parent = LinearLayout(RuntimeEnvironment.getApplication())
         var picked = -1
         RimeCandidateRow.bind(parent, menu, { picked = it.mCandidateIndex }, {})
-        val scroll = parent.getChildAt(0) as android.widget.HorizontalScrollView
+        val bar = parent.getChildAt(0) as LinearLayout
+        val scroll = bar.getChildAt(0) as HorizontalScrollView
         val row = scroll.getChildAt(0) as LinearLayout
         row.getChildAt(1).performClick()
         assertEquals(1, picked)
         assertFalse(scroll.isFocusable)
+        assertEquals("查", (bar.getChildAt(1) as TextView).text.toString())
     }
 
     @Test
-    fun candidateSlidePagesOnlyPastTheEdge() {
-        assertEquals(CandidateSlide.STAY, candidateSlide(0f, 2000f, 36f, 8f, 50f, true, true))
-        assertEquals(CandidateSlide.NEXT, candidateSlide(-36f, 0f, 36f, 8f, 50f, true, true))
-        assertEquals(CandidateSlide.PREVIOUS, candidateSlide(36f, 0f, 36f, 8f, 50f, true, true))
-        assertEquals(CandidateSlide.STAY, candidateSlide(-36f, 0f, 36f, 8f, 50f, true, false))
-        assertEquals(CandidateSlide.STAY, candidateSlide(36f, 0f, 36f, 8f, 50f, false, true))
-        assertEquals(CandidateSlide.NEXT, candidateSlide(-10f, -400f, 36f, 8f, 50f, false, true))
-        assertEquals(CandidateSlide.STAY, candidateSlide(-10f, -400f, 36f, 8f, 50f, false, false))
-        assertEquals(CandidateSlide.STAY, candidateSlide(-4f, -4000f, 36f, 8f, 50f, true, true))
-    }
-
-    @Test
-    fun stripScrollsWhenTheRowIsWiderAndTheFingerIsNotAtTheEdge() {
-        assertFalse(stripCanScroll(20f, 0, 100, 180))
-        assertTrue(stripCanScroll(-20f, 0, 100, 180))
-        assertTrue(stripCanScroll(20f, 10, 100, 180))
-        assertFalse(stripCanScroll(-20f, 80, 100, 180))
-        assertTrue(stripCanScroll(20f, 80, 100, 180))
-        assertFalse(stripCanScroll(-20f, 0, 100, 100))
-    }
-
-    @Test
-    fun slidingTheCandidateRowMovesItAndTurnsThePage() {
-        var picked = -1
-        var pages = 0
-        var backward = false
-        val parent = openRow(pageNo = 0, lastPage = false, onPick = { picked = it.mCandidateIndex }, onPage = {
-            pages += 1
-            backward = it
-        })
-        val scroll = parent.getChildAt(0) as HorizontalScrollView
-        val row = scroll.getChildAt(0) as android.widget.LinearLayout
-        val hit = row.getChildAt(0)
-        val x = hit.left + hit.width / 2f
+    fun lookupButtonStaysOutsideTheScrollingList() {
+        var expanded = false
+        val parent = openRow(onExpand = { expanded = true })
+        val bar = parent.getChildAt(0) as LinearLayout
+        val scroll = bar.getChildAt(0) as HorizontalScrollView
+        val row = scroll.getChildAt(0) as LinearLayout
+        val pinned = bar.getChildAt(1) as TextView
+        assertEquals("查", pinned.text.toString())
+        assertTrue((0 until row.childCount).none { (row.getChildAt(it) as? TextView)?.text == "查" })
+        pinned.performClick()
+        assertTrue(expanded)
+        val x = 40f
         val y = scroll.height / 2f
         drag(scroll, x, y, x - 220f)
-        assertTrue(row.translationX < -40f)
         lift(scroll, x - 220f, y)
-        assertEquals(1, pages)
-        assertFalse(backward)
-        assertEquals(-1, picked)
+        assertEquals(0f, row.translationX)
+    }
 
-        val first = openRow(pageNo = 0, lastPage = false, onPick = {}, onPage = { pages += 1 })
-        val firstScroll = first.getChildAt(0) as HorizontalScrollView
-        val firstRow = firstScroll.getChildAt(0) as android.widget.LinearLayout
-        drag(firstScroll, x, y, x + 220f)
-        assertTrue(firstRow.translationX > 40f)
-        lift(firstScroll, x + 220f, y)
-        assertEquals(1, pages)
+    @Test
+    fun spacedSpellingStillOpensTheCharacterGrid() {
+        val client = FakeRimeClient()
+        client.shown = "zhe ge"
+        client.pages = listOf(
+            listOf(RimeCandidate("这个", "zhe ge"), RimeCandidate("者个", "")),
+            listOf(RimeCandidate("着个", "")),
+        )
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('z'.code, 0, false)
+        editor.composing = ""
+        editor.beforeOverride = "zhege"
+        controller.onUpdateSelection(belated = false, spanLength = 2)
+        controller.onUpdateSelection(belated = false, spanLength = -1)
+        controller.onOpenLookup()
+        assertFalse(lookupPad)
+        assertEquals(listOf("这个", "者个", "着个"), lookupRows.map { it.text })
+    }
 
-        val middle = openRow(pageNo = 1, lastPage = false, onPick = {}, onPage = {
-            pages += 1
-            backward = it
-        })
-        val middleScroll = middle.getChildAt(0) as HorizontalScrollView
-        drag(middleScroll, x, y, x + 220f)
-        lift(middleScroll, x + 220f, y)
-        assertEquals(2, pages)
-        assertTrue(backward)
+    @Test
+    fun lookupShowsTheVisibleCandidatesBeforeTheWalkFinishes() {
+        val queued = ArrayList<() -> Unit>()
+        val client = FakeRimeClient()
+        client.pages = listOf(
+            listOf(RimeCandidate("这个", "")),
+            listOf(RimeCandidate("着个", "")),
+        )
+        val controller = controller(client, FakeEditor(), starter = PinyinStarter { queued.add(it) })
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        while (queued.isNotEmpty()) queued.removeAt(0).invoke()
+        controller.onEvent('z'.code, 0, false)
+        controller.onOpenLookup()
+        assertFalse(lookupPad)
+        assertEquals(listOf("这个"), lookupRows.map { it.text })
+        while (queued.isNotEmpty()) queued.removeAt(0).invoke()
+        assertEquals(listOf("这个", "着个"), lookupRows.map { it.text })
     }
 
     @Test
@@ -430,7 +430,7 @@ class PinyinInputControllerTest {
         val after = client.snapshots
         controller.onCloseLookup()
         controller.onOpenLookup()
-        assertEquals(after + 1, client.snapshots)
+        assertEquals(after, client.snapshots)
         controller.onLookupPress(row)
         assertEquals("系", editor.committed)
     }
@@ -447,14 +447,14 @@ class PinyinInputControllerTest {
         val afterFirst = client.snapshots
         controller.onCloseLookup()
         controller.onOpenLookup()
-        assertEquals(afterFirst + 1, client.snapshots)
+        assertEquals(afterFirst, client.snapshots)
         controller.onCloseLookup()
         val beforeScript = client.snapshots
         controller.onEvent(0, KeyCode.RIME_SCRIPT, false)
         assertTrue(client.snapshots > beforeScript + 1)
         val afterScript = client.snapshots
         controller.onOpenLookup()
-        assertEquals(afterScript + 1, client.snapshots)
+        assertEquals(afterScript, client.snapshots)
     }
 
     @Test
@@ -718,19 +718,16 @@ class PinyinInputControllerTest {
     }
 
     private fun openRow(
-        pageNo: Int,
-        lastPage: Boolean,
-        onPick: (SuggestedWordInfo) -> Unit,
-        onPage: (Boolean) -> Unit,
+        onPick: (SuggestedWordInfo) -> Unit = {},
+        onExpand: () -> Unit = {},
     ): ViewGroup {
         val menu = rimeSuggestedWords(RimeSnapshot(
             preedit = "ni",
             candidates = listOf(RimeCandidate("你", "ni"), RimeCandidate("尼", "ni")),
-            pageNo = pageNo,
-            isLastPage = lastPage,
+            isLastPage = true,
         ))
         val parent = FrameLayout(RuntimeEnvironment.getApplication())
-        RimeCandidateRow.bind(parent, menu, onPick, onPage)
+        RimeCandidateRow.bind(parent, menu, onPick, onExpand)
         val width = View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY)
         val height = View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY)
         parent.measure(width, height)

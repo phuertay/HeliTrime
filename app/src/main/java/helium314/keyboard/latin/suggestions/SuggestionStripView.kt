@@ -289,7 +289,6 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             suggestionsStrip.isVisible = true
             RimeCandidateRow.bind(suggestionsStrip, suggestions,
                 { listener.pickSuggestionManually(it) },
-                { listener.onRimePage(it) },
                 { listener.onRimeLookup() },
                 keptScroll)
             isExternalSuggestionVisible = false

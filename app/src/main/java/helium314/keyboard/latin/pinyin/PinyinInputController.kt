@@ -306,7 +306,7 @@ class PinyinInputController(
         try {
             showPreedit(snapshot.preedit)
             shownSnapshot = snapshot
-            ui.showCandidates(snapshot)
+            showStripFor(snapshot)
             ensureMenu(snapshot.preedit)
         } finally {
             restoring = false
@@ -345,7 +345,14 @@ class PinyinInputController(
         widened = false
         radical = 0
         ink.clear()
-        if (hasPreedit) ensureMenu(client.readSnapshot().preedit) else dropMenu()
+        if (hasPreedit) {
+            // shown is enough. readSnapshot waits behind the page walk and leaves the grid empty.
+            val preedit = shown.ifEmpty { client.readSnapshot().preedit }
+            if (preedit.isNotEmpty()) ensureMenu(preedit) else dropMenu()
+            if (menu.isEmpty()) seedMenuFromShown()
+        } else {
+            dropMenu()
+        }
         padOpen = !hasPreedit
         publishLookup()
     }
@@ -470,7 +477,7 @@ class PinyinInputController(
         if (!asciiMode && snapshot.preedit.isNotEmpty()) {
             showPreedit(snapshot.preedit)
             shownSnapshot = snapshot
-            ui.showCandidates(snapshot)
+            showStripFor(snapshot)
         } else if (snapshot.preedit.isEmpty()) {
             if (hasPreedit && snapshot.commit.isEmpty()) erasePreedit()
             plain = false
@@ -507,7 +514,7 @@ class PinyinInputController(
             hasPreedit = true
             preeditLength = snapshot.preedit.length
             shownSnapshot = snapshot
-            ui.showCandidates(snapshot)
+            showStripFor(snapshot)
             ensureMenu(snapshot.preedit)
         } else {
             plain = false
@@ -600,7 +607,30 @@ class PinyinInputController(
     }
 
     private fun spellingBeforeCursor(): Boolean {
-        return shown.isNotEmpty() && editor.textBeforeCursor(shown.length).endsWith(shown)
+        if (shown.isEmpty()) return false
+        if (editor.textBeforeCursor(shown.length).endsWith(shown)) return true
+        // Firefox keeps "zhege" when the underline was "zhe ge". That is still this spelling.
+        val compact = spellingWithoutSyllableSpaces(shown)
+        return compact != shown && compact.isNotEmpty()
+            && editor.textBeforeCursor(compact.length).endsWith(compact)
+    }
+
+    /** The page already on screen. 查 can open before the rest of the walk arrives. */
+    private fun seedMenuFromShown() {
+        if (menu.isNotEmpty()) return
+        val snap = shownSnapshot ?: return
+        if (snap.candidates.isEmpty()) return
+        if (shown.isNotEmpty() && snap.preedit != shown && spellingWithoutSyllableSpaces(snap.preedit) != spellingWithoutSyllableSpaces(shown)) {
+            return
+        }
+        menu = snap.candidates.mapIndexed { index, candidate ->
+            MenuChar(candidate.text, snap.pageNo, index, candidate.comment)
+        }
+    }
+
+    private fun showStripFor(snapshot: RimeSnapshot) {
+        if (menuFor == snapshot.preedit && menu.isNotEmpty()) ui.showMenu(menu)
+        else ui.showCandidates(snapshot)
     }
 
     /** The cursor left the spelling. Leave whatever text is there and forget the word. */

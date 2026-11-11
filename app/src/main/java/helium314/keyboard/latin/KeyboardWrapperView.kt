@@ -146,19 +146,23 @@ class KeyboardWrapperView @JvmOverloads constructor(
         val keys = KeyboardSwitcher.getInstance().visibleKeyboardView
         val occupied = (keys as? KeyboardView)?.keyboard?.mOccupiedHeight ?: 0
         val measured = keys?.measuredHeight ?: 0
-        val height = when {
+        val slot = measuredHeight
+        val keysHeight = when {
             occupied > 0 && measured > 0 -> min(occupied, measured)
             occupied > 0 -> occupied
             measured > 0 -> measured
-            else -> measuredHeight
+            else -> slot
         }
+        // A keyboard view measured as the whole window must not grow the pad over the
+        // suggestion buttons. Firefox does that while a spaced spelling restarts the field.
+        val height = if (slot > 0) min(keysHeight, slot) else keysHeight
         if (height <= 0) return
         lookup.layoutParams.height = height
         lookup.measure(
             MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
         )
-        if (measuredHeight != height) setMeasuredDimension(measuredWidth, height)
+        if (height < slot) setMeasuredDimension(measuredWidth, height)
     }
 
     @SuppressLint("RtlHardcoded")
