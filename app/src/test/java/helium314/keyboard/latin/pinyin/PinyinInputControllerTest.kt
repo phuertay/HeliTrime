@@ -1,7 +1,12 @@
 package helium314.keyboard.latin.pinyin
 
 import android.text.InputType
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import helium314.keyboard.ShadowInputMethodManager2
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.KeyboardElement
@@ -238,6 +243,69 @@ class PinyinInputControllerTest {
         val row = scroll.getChildAt(0) as LinearLayout
         row.getChildAt(1).performClick()
         assertEquals(1, picked)
+        assertFalse(scroll.isFocusable)
+    }
+
+    @Test
+    fun candidateSlidePagesOnlyPastTheEdge() {
+        assertEquals(CandidateSlide.STAY, candidateSlide(0f, 2000f, 36f, 8f, 50f, true, true))
+        assertEquals(CandidateSlide.NEXT, candidateSlide(-36f, 0f, 36f, 8f, 50f, true, true))
+        assertEquals(CandidateSlide.PREVIOUS, candidateSlide(36f, 0f, 36f, 8f, 50f, true, true))
+        assertEquals(CandidateSlide.STAY, candidateSlide(-36f, 0f, 36f, 8f, 50f, true, false))
+        assertEquals(CandidateSlide.STAY, candidateSlide(36f, 0f, 36f, 8f, 50f, false, true))
+        assertEquals(CandidateSlide.NEXT, candidateSlide(-10f, -400f, 36f, 8f, 50f, false, true))
+        assertEquals(CandidateSlide.STAY, candidateSlide(-10f, -400f, 36f, 8f, 50f, false, false))
+        assertEquals(CandidateSlide.STAY, candidateSlide(-4f, -4000f, 36f, 8f, 50f, true, true))
+    }
+
+    @Test
+    fun stripScrollsWhenTheRowIsWiderAndTheFingerIsNotAtTheEdge() {
+        assertFalse(stripCanScroll(20f, 0, 100, 180))
+        assertTrue(stripCanScroll(-20f, 0, 100, 180))
+        assertTrue(stripCanScroll(20f, 10, 100, 180))
+        assertFalse(stripCanScroll(-20f, 80, 100, 180))
+        assertTrue(stripCanScroll(20f, 80, 100, 180))
+        assertFalse(stripCanScroll(-20f, 0, 100, 100))
+    }
+
+    @Test
+    fun slidingTheCandidateRowMovesItAndTurnsThePage() {
+        var picked = -1
+        var pages = 0
+        var backward = false
+        val parent = openRow(pageNo = 0, lastPage = false, onPick = { picked = it.mCandidateIndex }, onPage = {
+            pages += 1
+            backward = it
+        })
+        val scroll = parent.getChildAt(0) as HorizontalScrollView
+        val row = scroll.getChildAt(0) as android.widget.LinearLayout
+        val hit = row.getChildAt(0)
+        val x = hit.left + hit.width / 2f
+        val y = scroll.height / 2f
+        drag(scroll, x, y, x - 220f)
+        assertTrue(row.translationX < -40f)
+        lift(scroll, x - 220f, y)
+        assertEquals(1, pages)
+        assertFalse(backward)
+        assertEquals(-1, picked)
+
+        val first = openRow(pageNo = 0, lastPage = false, onPick = {}, onPage = { pages += 1 })
+        val firstScroll = first.getChildAt(0) as HorizontalScrollView
+        val firstRow = firstScroll.getChildAt(0) as android.widget.LinearLayout
+        drag(firstScroll, x, y, x + 220f)
+        assertTrue(firstRow.translationX > 40f)
+        lift(firstScroll, x + 220f, y)
+        assertEquals(1, pages)
+
+        val middle = openRow(pageNo = 1, lastPage = false, onPick = {}, onPage = {
+            pages += 1
+            backward = it
+        })
+        val middleScroll = middle.getChildAt(0) as HorizontalScrollView
+        drag(middleScroll, x, y, x + 220f)
+        lift(middleScroll, x + 220f, y)
+        assertEquals(2, pages)
+        assertTrue(backward)
     }
 
     @Test
@@ -618,6 +686,41 @@ class PinyinInputControllerTest {
             SuggestedWordInfo.NOT_AN_INDEX,
             SuggestedWordInfo.NOT_A_CONFIDENCE,
         )
+    }
+
+    private fun openRow(
+        pageNo: Int,
+        lastPage: Boolean,
+        onPick: (SuggestedWordInfo) -> Unit,
+        onPage: (Boolean) -> Unit,
+    ): ViewGroup {
+        val menu = rimeSuggestedWords(RimeSnapshot(
+            preedit = "ni",
+            candidates = listOf(RimeCandidate("你", "ni"), RimeCandidate("尼", "ni")),
+            pageNo = pageNo,
+            isLastPage = lastPage,
+        ))
+        val parent = FrameLayout(RuntimeEnvironment.getApplication())
+        RimeCandidateRow.bind(parent, menu, onPick, onPage)
+        val width = View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY)
+        val height = View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY)
+        parent.measure(width, height)
+        parent.layout(0, 0, 600, 120)
+        return parent
+    }
+
+    private fun drag(scroll: View, fromX: Float, y: Float, toX: Float) {
+        val down = 1_000L
+        scroll.dispatchTouchEvent(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, fromX, y, 0))
+        val steps = 8
+        for (step in 1..steps) {
+            val x = fromX + (toX - fromX) * step / steps
+            scroll.dispatchTouchEvent(MotionEvent.obtain(down, down + step * 16L, MotionEvent.ACTION_MOVE, x, y, 0))
+        }
+    }
+
+    private fun lift(scroll: View, x: Float, y: Float) {
+        scroll.dispatchTouchEvent(MotionEvent.obtain(1_000L, 1_200L, MotionEvent.ACTION_UP, x, y, 0))
     }
 }
 
