@@ -21,6 +21,10 @@ interface PinyinUi {
     fun showPreparing(message: String)
     fun showFailure(message: String)
     fun showCandidates(snapshot: RimeSnapshot)
+
+    /** Every candidate the grid would list for this spelling. */
+    fun showMenu(menu: List<MenuChar>) {}
+
     fun showNeutral()
     fun onModeChanged(label: String)
     fun showLookup(model: LookupModel) {}

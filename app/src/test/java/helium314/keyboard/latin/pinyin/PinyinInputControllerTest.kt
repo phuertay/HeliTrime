@@ -35,6 +35,7 @@ class PinyinInputControllerTest {
     private var lookupPad = false
     private var lookupStrokes = 0
     private var strip = ""
+    private var stripMenu = listOf<String>()
 
     @Test
     fun numpadIsNotSentToRime() {
@@ -448,10 +449,34 @@ class PinyinInputControllerTest {
         controller.onOpenLookup()
         assertEquals(afterFirst + 1, client.snapshots)
         controller.onCloseLookup()
+        val beforeScript = client.snapshots
         controller.onEvent(0, KeyCode.RIME_SCRIPT, false)
+        assertTrue(client.snapshots > beforeScript + 1)
         val afterScript = client.snapshots
         controller.onOpenLookup()
-        assertTrue(client.snapshots > afterScript + 1)
+        assertEquals(afterScript + 1, client.snapshots)
+    }
+
+    @Test
+    fun stripListsEveryCandidateTheGridWouldShow() {
+        val client = FakeRimeClient()
+        client.pages = listOf(
+            listOf(RimeCandidate("你", "ni"), RimeCandidate("泥", "ni")),
+            listOf(RimeCandidate("呢", "ne"), RimeCandidate("拟", "ni")),
+        )
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('n'.code, 0, false)
+        assertEquals(listOf("你", "泥", "呢", "拟"), stripMenu)
+        val words = rimeSuggestedWords(stripMenu.mapIndexed { index, text ->
+            MenuChar(text, index / 2, index % 2)
+        })
+        assertTrue(words.mRimeLastPage)
+        assertEquals(0, words.mRimePageNo)
+        assertEquals(4, words.size)
+        assertTrue(controller.onPick(1, 1))
+        assertEquals("拟", editor.committed)
     }
 
     @Test
@@ -648,7 +673,11 @@ class PinyinInputControllerTest {
                 override fun showPreparing(message: String) { strip = message }
                 override fun showFailure(message: String) { strip = message }
                 override fun showCandidates(snapshot: RimeSnapshot) { strip = snapshot.preedit }
-                override fun showNeutral() { strip = "" }
+                override fun showMenu(menu: List<MenuChar>) { stripMenu = menu.map { it.text } }
+                override fun showNeutral() {
+                    strip = ""
+                    stripMenu = emptyList()
+                }
                 override fun onModeChanged(label: String) {}
                 override fun showLookup(model: LookupModel) {
                     lookupRows = model.rows

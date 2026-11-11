@@ -61,6 +61,9 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         override fun showCandidates(snapshot: RimeSnapshot) {
             ime.setSuggestions(rimeSuggestedWords(snapshot))
         }
+        override fun showMenu(menu: List<MenuChar>) {
+            ime.setSuggestions(rimeSuggestedWords(menu))
+        }
         override fun showNeutral() {
             ime.setNeutralSuggestionStrip()
         }

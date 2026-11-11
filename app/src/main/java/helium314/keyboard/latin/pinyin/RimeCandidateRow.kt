@@ -56,12 +56,18 @@ object RimeCandidateRow {
         return words.getInfo(0).isKindOf(SuggestedWordInfo.KIND_RIME)
     }
 
+    fun scrollOf(parent: ViewGroup): Int {
+        val scroll = parent.getChildAt(0) as? HorizontalScrollView ?: return 0
+        return scroll.scrollX
+    }
+
     fun bind(
         parent: ViewGroup,
         words: SuggestedWords,
         onPick: (SuggestedWordInfo) -> Unit,
         onPage: (Boolean) -> Unit,
         onExpand: (() -> Unit)? = null,
+        initialScroll: Int = 0,
     ) {
         val context = parent.context
         val scroll = CandidateStrip(
@@ -95,6 +101,7 @@ object RimeCandidateRow {
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         parent.addView(scroll, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        if (initialScroll > 0) scroll.post { scroll.scrollTo(initialScroll, 0) }
     }
 
     private fun candidate(context: Context, info: SuggestedWordInfo, onPick: (() -> Unit)?): LinearLayout {

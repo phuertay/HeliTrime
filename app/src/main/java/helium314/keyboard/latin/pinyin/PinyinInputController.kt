@@ -2,6 +2,7 @@ package helium314.keyboard.latin.pinyin
 
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
+import kotlin.jvm.JvmOverloads
 
 /**
  * Key policy for the luna_pinyin subtype. Latin typing stays in InputLogic:
@@ -221,10 +222,31 @@ class PinyinInputController(
         return consumed
     }
 
-    fun onPick(index: Int): Boolean {
+    @JvmOverloads
+    fun onPick(index: Int, page: Int = 0): Boolean {
         if (!ready || failed || asciiMode || index < 0) return false
-        client.selectCandidate(index)
-        applySnapshot()
+        if (page <= 0) {
+            client.selectCandidate(index)
+            applySnapshot()
+            return true
+        }
+        val text = client.selectOnPage(page, index)
+        if (text.isEmpty()) return false
+        commitPlain(text)
+        val snapshot = client.readSnapshot()
+        if (snapshot.preedit.isNotEmpty()) {
+            showPreedit(snapshot.preedit)
+            shownSnapshot = snapshot
+            hasPreedit = true
+            preeditLength = snapshot.preedit.length
+            dropMenu()
+            ui.showCandidates(snapshot)
+            ensureMenu(snapshot.preedit)
+        } else {
+            dropMenu()
+            shownSnapshot = null
+            ui.showNeutral()
+        }
         return true
     }
 
@@ -285,6 +307,7 @@ class PinyinInputController(
             showPreedit(snapshot.preedit)
             shownSnapshot = snapshot
             ui.showCandidates(snapshot)
+            ensureMenu(snapshot.preedit)
         } finally {
             restoring = false
         }
@@ -459,6 +482,7 @@ class PinyinInputController(
         }
         publishMode()
         if (menuFor != snapshot.preedit) dropMenu()
+        if (!asciiMode && hasPreedit && snapshot.preedit.isNotEmpty()) ensureMenu(snapshot.preedit)
         if (!lookupOpen) return
         if (snapshot.commit.isNotEmpty()) {
             closeLookup()
@@ -484,6 +508,7 @@ class PinyinInputController(
             preeditLength = snapshot.preedit.length
             shownSnapshot = snapshot
             ui.showCandidates(snapshot)
+            ensureMenu(snapshot.preedit)
         } else {
             plain = false
             shown = ""
@@ -684,7 +709,8 @@ class PinyinInputController(
         if (!restoreStrip || !ready || failed || preparing) return
         val cached = shownSnapshot
         if (!asciiMode && hasPreedit && cached != null && cached.preedit.isNotEmpty()) {
-            ui.showCandidates(cached)
+            if (menuFor == cached.preedit && menu.isNotEmpty()) ui.showMenu(menu)
+            else ui.showCandidates(cached)
         } else {
             ui.showNeutral()
         }
@@ -700,12 +726,13 @@ class PinyinInputController(
         menu = emptyList()
         val generation = ++menuGeneration
         starter.start {
-            val collected = client.readMenu()
+            val collected = collectMenu(preedit) { move -> client.menuPage(preedit, move) }
             deliver {
-                if (generation != menuGeneration) return@deliver
+                if (generation != menuGeneration || collected == null) return@deliver
                 if (client.readSnapshot().preedit != preedit) return@deliver
                 menu = collected
                 menuFor = preedit
+                if (!lookupOpen && collected.isNotEmpty() && hasPreedit) ui.showMenu(collected)
                 if (lookupOpen) publishLookup()
             }
         }

@@ -274,6 +274,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             if (lookupActions?.parent !== suggestionsStrip) placeLookupActions()
             return
         }
+        val keptScroll = if (RimeCandidateRow.isRime(suggestions) && RimeCandidateRow.isRime(suggestedWords)) {
+            RimeCandidateRow.scrollOf(suggestionsStrip)
+        } else 0
         clear()
         setRtl(isRtlLanguage)
         suggestedWords = suggestions
@@ -287,7 +290,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             RimeCandidateRow.bind(suggestionsStrip, suggestions,
                 { listener.pickSuggestionManually(it) },
                 { listener.onRimePage(it) },
-                { listener.onRimeLookup() })
+                { listener.onRimeLookup() },
+                keptScroll)
             isExternalSuggestionVisible = false
             return
         }
