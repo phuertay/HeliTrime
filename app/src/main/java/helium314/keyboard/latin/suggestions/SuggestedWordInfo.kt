@@ -57,6 +57,10 @@ data class SuggestedWordInfo(
     @JvmField
     var mCandidateIndex = NOT_AN_INDEX
 
+    /** Page this candidate came from. The strip shows every page at once. */
+    @JvmField
+    var mRimePage = 0
+
     val isEligibleForAutoCommit: Boolean
         get() = (isKindOf(KIND_CORRECTION) && NOT_AN_INDEX != indexOfTouchPointOfSecondWord)
 

@@ -31,6 +31,10 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
             if (n <= 0) return ""
             return ime.currentInputConnection?.getTextBeforeCursor(n, 0)?.toString() ?: ""
         }
+        override fun textAfterCursor(n: Int): String {
+            if (n <= 0) return ""
+            return ime.currentInputConnection?.getTextAfterCursor(n, 0)?.toString() ?: ""
+        }
         override fun contains(text: String): Boolean {
             if (text.isEmpty()) return false
             val connection = ime.currentInputConnection ?: return false
@@ -49,6 +53,9 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         override fun deleteBefore(n: Int) {
             if (n > 0) ime.pinyinConnection().deleteTextBeforeCursor(n)
         }
+        override fun deleteAfter(n: Int) {
+            if (n > 0) ime.pinyinConnection().deleteTextAfterCursor(n)
+        }
     }
     val box = arrayOfNulls<PinyinInputController>(1)
     val ui = object : PinyinUi {
@@ -60,6 +67,9 @@ fun createPinyinController(ime: LatinIME): PinyinInputController {
         }
         override fun showCandidates(snapshot: RimeSnapshot) {
             ime.setSuggestions(rimeSuggestedWords(snapshot))
+        }
+        override fun showMenu(menu: List<MenuChar>) {
+            ime.setSuggestions(rimeSuggestedWords(menu))
         }
         override fun showNeutral() {
             ime.setNeutralSuggestionStrip()

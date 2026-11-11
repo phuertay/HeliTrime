@@ -1523,7 +1523,7 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void pickSuggestionManually(SuggestedWordInfo suggestionInfo) {
         if (suggestionInfo != null && suggestionInfo.isKindOf(SuggestedWordInfo.KIND_RIME)) {
-            if (mPinyinController != null) mPinyinController.onPick(suggestionInfo.mCandidateIndex);
+            if (mPinyinController != null) mPinyinController.onPick(suggestionInfo.mCandidateIndex, suggestionInfo.mRimePage);
             return;
         }
         InputTransaction completeInputTransaction = mInputLogic.onPickSuggestionManually(

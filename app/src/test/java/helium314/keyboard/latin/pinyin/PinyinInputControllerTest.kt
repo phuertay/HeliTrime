@@ -1,7 +1,13 @@
 package helium314.keyboard.latin.pinyin
 
 import android.text.InputType
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.TextView
 import helium314.keyboard.ShadowInputMethodManager2
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.KeyboardElement
@@ -30,6 +36,7 @@ class PinyinInputControllerTest {
     private var lookupPad = false
     private var lookupStrokes = 0
     private var strip = ""
+    private var stripMenu = listOf<String>()
 
     @Test
     fun numpadIsNotSentToRime() {
@@ -127,7 +134,7 @@ class PinyinInputControllerTest {
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
         client.shown = "ni hao"
         controller.onEvent('n'.code, 0, false)
-        assertEquals("ni hao", editor.composing)
+        assertEquals("nihao", editor.composing)
         controller.onLeaveSubtype()
         assertEquals("nihao", editor.finishedText)
         assertEquals("", editor.composing)
@@ -234,10 +241,110 @@ class PinyinInputControllerTest {
         val parent = LinearLayout(RuntimeEnvironment.getApplication())
         var picked = -1
         RimeCandidateRow.bind(parent, menu, { picked = it.mCandidateIndex }, {})
-        val scroll = parent.getChildAt(0) as android.widget.HorizontalScrollView
+        val bar = parent.getChildAt(0) as LinearLayout
+        val scroll = bar.getChildAt(0) as HorizontalScrollView
         val row = scroll.getChildAt(0) as LinearLayout
         row.getChildAt(1).performClick()
         assertEquals(1, picked)
+        assertFalse(scroll.isFocusable)
+        assertEquals("查", (bar.getChildAt(1) as TextView).text.toString())
+    }
+
+    @Test
+    fun lookupButtonStaysOutsideTheScrollingList() {
+        var expanded = false
+        val parent = openRow(onExpand = { expanded = true })
+        val bar = parent.getChildAt(0) as LinearLayout
+        val scroll = bar.getChildAt(0) as HorizontalScrollView
+        val row = scroll.getChildAt(0) as LinearLayout
+        val pinned = bar.getChildAt(1) as TextView
+        assertEquals("查", pinned.text.toString())
+        assertTrue((0 until row.childCount).none { (row.getChildAt(it) as? TextView)?.text == "查" })
+        pinned.performClick()
+        assertTrue(expanded)
+        val x = 40f
+        val y = scroll.height / 2f
+        drag(scroll, x, y, x - 220f)
+        lift(scroll, x - 220f, y)
+        assertEquals(0f, row.translationX)
+    }
+
+    @Test
+    fun choosingZheGeCommitsBothCharacters() {
+        assertEquals(6, lettersRemovedForCommit("zhe ge", "zhe ge"))
+        assertEquals(3, lettersRemovedForCommit("zhe", "zhe ge"))
+        assertEquals(5, lettersRemovedForCommit("zhege", "zhe ge"))
+        assertEquals(3 to 2, spellingAroundCursor("zhe", "ge", "zhe ge"))
+        assertEquals(5 to 0, spellingAroundCursor("zhege", "", "zhe ge"))
+        val client = FakeRimeClient()
+        client.shown = "zhe ge"
+        client.pages = listOf(listOf(RimeCandidate("这个", "zhe ge")))
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('z'.code, 0, false)
+        editor.composing = "zhe"
+        editor.committed = ""
+        editor.afterOverride = "ge"
+        controller.onPick(0)
+        assertEquals("这个", editor.committed)
+        assertEquals("", editor.composing)
+        assertEquals("", editor.afterOverride)
+    }
+
+    @Test
+    fun latinZheBecomesPinyinWhenTheKeyboardSwitches() {
+        assertEquals("zhe", trailingPinyin("say zhe"))
+        assertEquals("zh", trailingPinyin("zh"))
+        assertEquals("", trailingPinyin("say hello"))
+        assertEquals("", trailingPinyin("say the"))
+        val editor = FakeEditor()
+        editor.committed = "say zhe"
+        val controller = controller(FakeRimeClient(), editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        assertEquals("say ", editor.committed)
+        assertEquals("zhe", editor.composing)
+        assertTrue(stripMenu.isNotEmpty() || strip == "zhe")
+    }
+
+    @Test
+    fun spacedSpellingStillOpensTheCharacterGrid() {
+        val client = FakeRimeClient()
+        client.shown = "zhe ge"
+        client.pages = listOf(
+            listOf(RimeCandidate("这个", "zhe ge"), RimeCandidate("者个", "")),
+            listOf(RimeCandidate("着个", "")),
+        )
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('z'.code, 0, false)
+        editor.composing = ""
+        editor.beforeOverride = "zhege"
+        controller.onUpdateSelection(belated = false, spanLength = 2)
+        controller.onUpdateSelection(belated = false, spanLength = -1)
+        controller.onOpenLookup()
+        assertFalse(lookupPad)
+        assertEquals(listOf("这个", "者个", "着个"), lookupRows.map { it.text })
+    }
+
+    @Test
+    fun lookupShowsTheVisibleCandidatesBeforeTheWalkFinishes() {
+        val queued = ArrayList<() -> Unit>()
+        val client = FakeRimeClient()
+        client.pages = listOf(
+            listOf(RimeCandidate("这个", "")),
+            listOf(RimeCandidate("着个", "")),
+        )
+        val controller = controller(client, FakeEditor(), starter = PinyinStarter { queued.add(it) })
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        while (queued.isNotEmpty()) queued.removeAt(0).invoke()
+        controller.onEvent('z'.code, 0, false)
+        controller.onOpenLookup()
+        assertFalse(lookupPad)
+        assertEquals(listOf("这个"), lookupRows.map { it.text })
+        while (queued.isNotEmpty()) queued.removeAt(0).invoke()
+        assertEquals(listOf("这个", "着个"), lookupRows.map { it.text })
     }
 
     @Test
@@ -361,7 +468,7 @@ class PinyinInputControllerTest {
         val after = client.snapshots
         controller.onCloseLookup()
         controller.onOpenLookup()
-        assertEquals(after + 1, client.snapshots)
+        assertEquals(after, client.snapshots)
         controller.onLookupPress(row)
         assertEquals("系", editor.committed)
     }
@@ -378,12 +485,36 @@ class PinyinInputControllerTest {
         val afterFirst = client.snapshots
         controller.onCloseLookup()
         controller.onOpenLookup()
-        assertEquals(afterFirst + 1, client.snapshots)
+        assertEquals(afterFirst, client.snapshots)
         controller.onCloseLookup()
+        val beforeScript = client.snapshots
         controller.onEvent(0, KeyCode.RIME_SCRIPT, false)
+        assertTrue(client.snapshots > beforeScript + 1)
         val afterScript = client.snapshots
         controller.onOpenLookup()
-        assertTrue(client.snapshots > afterScript + 1)
+        assertEquals(afterScript, client.snapshots)
+    }
+
+    @Test
+    fun stripListsEveryCandidateTheGridWouldShow() {
+        val client = FakeRimeClient()
+        client.pages = listOf(
+            listOf(RimeCandidate("你", "ni"), RimeCandidate("泥", "ni")),
+            listOf(RimeCandidate("呢", "ne"), RimeCandidate("拟", "ni")),
+        )
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('n'.code, 0, false)
+        assertEquals(listOf("你", "泥", "呢", "拟"), stripMenu)
+        val words = rimeSuggestedWords(stripMenu.mapIndexed { index, text ->
+            MenuChar(text, index / 2, index % 2)
+        })
+        assertTrue(words.mRimeLastPage)
+        assertEquals(0, words.mRimePageNo)
+        assertEquals(4, words.size)
+        assertTrue(controller.onPick(1, 1))
+        assertEquals("拟", editor.committed)
     }
 
     @Test
@@ -580,7 +711,11 @@ class PinyinInputControllerTest {
                 override fun showPreparing(message: String) { strip = message }
                 override fun showFailure(message: String) { strip = message }
                 override fun showCandidates(snapshot: RimeSnapshot) { strip = snapshot.preedit }
-                override fun showNeutral() { strip = "" }
+                override fun showMenu(menu: List<MenuChar>) { stripMenu = menu.map { it.text } }
+                override fun showNeutral() {
+                    strip = ""
+                    stripMenu = emptyList()
+                }
                 override fun onModeChanged(label: String) {}
                 override fun showLookup(model: LookupModel) {
                     lookupRows = model.rows
@@ -619,6 +754,38 @@ class PinyinInputControllerTest {
             SuggestedWordInfo.NOT_A_CONFIDENCE,
         )
     }
+
+    private fun openRow(
+        onPick: (SuggestedWordInfo) -> Unit = {},
+        onExpand: () -> Unit = {},
+    ): ViewGroup {
+        val menu = rimeSuggestedWords(RimeSnapshot(
+            preedit = "ni",
+            candidates = listOf(RimeCandidate("你", "ni"), RimeCandidate("尼", "ni")),
+            isLastPage = true,
+        ))
+        val parent = FrameLayout(RuntimeEnvironment.getApplication())
+        RimeCandidateRow.bind(parent, menu, onPick, onExpand)
+        val width = View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY)
+        val height = View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY)
+        parent.measure(width, height)
+        parent.layout(0, 0, 600, 120)
+        return parent
+    }
+
+    private fun drag(scroll: View, fromX: Float, y: Float, toX: Float) {
+        val down = 1_000L
+        scroll.dispatchTouchEvent(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, fromX, y, 0))
+        val steps = 8
+        for (step in 1..steps) {
+            val x = fromX + (toX - fromX) * step / steps
+            scroll.dispatchTouchEvent(MotionEvent.obtain(down, down + step * 16L, MotionEvent.ACTION_MOVE, x, y, 0))
+        }
+    }
+
+    private fun lift(scroll: View, x: Float, y: Float) {
+        scroll.dispatchTouchEvent(MotionEvent.obtain(1_000L, 1_200L, MotionEvent.ACTION_UP, x, y, 0))
+    }
 }
 
 private class FakeEditor : PinyinEditor {
@@ -629,6 +796,7 @@ private class FakeEditor : PinyinEditor {
     var wipedAfterFinish = false
     var onFinished: (() -> Unit)? = null
     var beforeOverride: String? = null
+    var afterOverride: String? = null
 
     override fun setComposingText(text: String) {
         if (finished && text.isEmpty()) wipedAfterFinish = true
@@ -651,6 +819,14 @@ private class FakeEditor : PinyinEditor {
     override fun textBeforeCursor(n: Int): String {
         beforeOverride?.let { return it.takeLast(n) }
         return (committed + composing).takeLast(n)
+    }
+
+    override fun textAfterCursor(n: Int): String = (afterOverride ?: "").take(n)
+
+    override fun deleteAfter(n: Int) {
+        if (n <= 0) return
+        val after = afterOverride ?: return
+        afterOverride = after.drop(n.coerceAtMost(after.length))
     }
 
     override fun contains(text: String): Boolean {
@@ -717,6 +893,7 @@ private class FakeRimeClient : RimeClient {
         if (index !in list.indices) return false
         commit = list[index].text
         raw = ""
+        shown = null
         return true
     }
 
