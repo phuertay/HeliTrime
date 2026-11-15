@@ -42,14 +42,9 @@ fetch() {
 }
 
 if [[ ! -f "${DEST}/boost/CMakeLists.txt" ]]; then
-  token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
-  auth=()
-  if [[ -n "${token}" ]]; then
-    auth=(-H "Authorization: Bearer ${token}")
-  fi
+  # The Actions token is for this repo. Sending it to boostorg returns 403.
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
     -H "Accept: application/octet-stream" \
-    "${auth[@]}" \
     -L -o "${DEST}/boost-1.89.0-cmake.tar.xz" "${BOOST_URL}"
   echo "${BOOST_SHA}  ${DEST}/boost-1.89.0-cmake.tar.xz" | sha256sum -c -
   tar -xJf "${DEST}/boost-1.89.0-cmake.tar.xz" -C "${DEST}"
