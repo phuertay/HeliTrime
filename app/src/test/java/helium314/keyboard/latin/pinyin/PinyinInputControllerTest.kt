@@ -112,6 +112,30 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun hardwareKeysKeepTheLettersAndDoNotWriteThemAgain() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        controller.onEvent('n'.code, 0, false)
+        controller.onEvent('i'.code, 0, false)
+        assertEquals("ni", editor.composing)
+        controller.onHardwareKeys()
+        assertEquals("ni", editor.committed)
+        assertEquals("", editor.composing)
+        assertEquals(0, editor.deleted)
+        editor.beforeOverride = "hello"
+        assertFalse(controller.onUpdateSelection(
+            belated = false,
+            cursorWhereWeSetIt = true,
+            hardwareKeyboard = false,
+        ))
+        assertEquals("ni", editor.committed)
+        assertEquals(0, editor.deleted)
+        assertEquals("", client.rawSpelling())
+    }
+
+    @Test
     fun firefoxRemovesTheUnderlineAndTheNextLetterExtendsTheSpelling() {
         val client = FakeRimeClient()
         val editor = FakeEditor()
@@ -656,6 +680,7 @@ private class FakeEditor : PinyinEditor {
     var wipedAfterFinish = false
     var onFinished: (() -> Unit)? = null
     var beforeOverride: String? = null
+    var deleted = 0
 
     override fun setComposingText(text: String) {
         if (finished && text.isEmpty()) wipedAfterFinish = true
@@ -693,6 +718,7 @@ private class FakeEditor : PinyinEditor {
 
     override fun deleteBefore(n: Int) {
         if (n <= 0) return
+        deleted += n
         if (composing.length >= n) {
             composing = composing.dropLast(n)
             return
@@ -713,6 +739,7 @@ private class FakeRimeClient : RimeClient {
     private var raw = ""
     private var commit = ""
     var shown: String? = null
+    fun rawSpelling() = raw
 
     override fun hasSession() = session
 

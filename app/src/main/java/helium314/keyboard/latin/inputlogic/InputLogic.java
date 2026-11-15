@@ -469,6 +469,25 @@ public final class InputLogic {
         return true;
     }
 
+    /**
+     * A physical key already changed the editor. Remember the cursor and drop any underline.
+     * Do not read the field. Firefox restarts the input when we do, and that restart repeats
+     * the word the steno machine just wrote.
+     */
+    public void noteExternalCursor(final int newSelStart, final int newSelEnd) {
+        final boolean composing = mWordComposer.isComposingWord();
+        resetComposingState(true /* alsoResetLastComposedWord */);
+        mSpaceState = SpaceState.NONE;
+        mDeleteCount = 0;
+        if (composing) mConnection.finishComposingText();
+        mConnection.noteExternalCursor(newSelStart, newSelEnd);
+    }
+
+    /** The next hardware key is going to the editor. Leave the current letters as plain text. */
+    public void releaseCompositionForHardware() {
+        noteExternalCursor(mConnection.getExpectedSelectionStart(), mConnection.getExpectedSelectionEnd());
+    }
+
     public boolean moveCursorByAndReturnIfInsideComposingWord(int distance) {
         return mWordComposer.moveCursorByAndReturnIfInsideComposingWord(distance);
     }
@@ -488,6 +507,7 @@ public final class InputLogic {
      */
     public InputTransaction onCodeInput(SettingsValues settingsValues, @NonNull Event event,
             CapsMode keyboardCapsMode, LatinIME.UIHandler handler) {
+        mConnection.reloadTextCacheIfStale();
         mJustRevertedACommit = false;
 
         if (GestureDataGatheringKt.useBackgroundGathering && mConnection.hasSelection())

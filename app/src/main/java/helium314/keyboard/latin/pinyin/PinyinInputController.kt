@@ -285,6 +285,30 @@ class PinyinInputController(
         return true
     }
 
+    /**
+     * A hardware key is about to reach the editor. Forget the spelling without deleting it
+     * and without writing it again. Firefox repeats a word that we commit a second time,
+     * and backspace then deletes the wrong characters.
+     */
+    fun onHardwareKeys() {
+        if (!hasPreedit && !plain && shown.isEmpty()) return
+        val underlined = hasPreedit && !plain
+        hasPreedit = false
+        preeditLength = 0
+        plain = false
+        shown = ""
+        shownSnapshot = null
+        committing = true
+        try {
+            if (underlined) editor.finishComposingText()
+            if (client.hasSession()) client.clearComposition()
+        } finally {
+            committing = false
+        }
+        dropMenu()
+        ui.showNeutral()
+    }
+
     /** Put the spelling back after a restart cleared the composing span. */
     fun restorePreedit() {
         if (!ready || failed || asciiMode || !hasPreedit || restoring) return
