@@ -93,7 +93,22 @@ class RimeSession(private val appContext: Context) : RimeClient {
         session != 0L && RimeJni.nativeChangePage(session, backward)
     }
 
-    override fun readMenu(): List<MenuChar> = call {
+    override fun menuPage(expectedPreedit: String, move: MenuMove): RimeSnapshot? = call(front = false) {
+        val snap = snapshotOnThread()
+        if (snap.preedit != expectedPreedit) return@call null
+        if (move == MenuMove.STAY || (move == MenuMove.NEXT && snap.isLastPage) || (move == MenuMove.PREVIOUS && snap.pageNo == 0)) {
+            return@call snap
+        }
+        val before = snap.pageNo
+        val backward = move == MenuMove.PREVIOUS
+        if (session == 0L || !RimeJni.nativeChangePage(session, backward)) return@call null
+        val now = snapshotOnThread()
+        if (now.preedit != expectedPreedit) return@call null
+        val moved = if (backward) now.pageNo < before else now.pageNo > before
+        if (moved) now else null
+    }
+
+    override fun readMenu(): List<MenuChar> = call(front = false) {
         walkPages(read = { snapshotOnThread() }, change = { back ->
             session != 0L && RimeJni.nativeChangePage(session, back)
         })
@@ -141,12 +156,13 @@ class RimeSession(private val appContext: Context) : RimeClient {
         userPath = null
     }
 
-    private fun <T> call(block: () -> T): T {
+    /** Keys jump ahead of a queued menu page. A page that is already running finishes first. */
+    private fun <T> call(front: Boolean = true, block: () -> T): T {
         if (Looper.myLooper() == thread.looper) return block()
         val latch = CountDownLatch(1)
         var result: T? = null
         var thrown: Throwable? = null
-        handler.post {
+        val task = Runnable {
             try {
                 result = block()
             } catch (error: Throwable) {
@@ -155,6 +171,7 @@ class RimeSession(private val appContext: Context) : RimeClient {
                 latch.countDown()
             }
         }
+        if (front) handler.postAtFrontOfQueue(task) else handler.post(task)
         latch.await()
         thrown?.let { throw it }
         @Suppress("UNCHECKED_CAST")

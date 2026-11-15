@@ -1,6 +1,43 @@
 package helium314.keyboard.latin.pinyin
 
-data class MenuChar(val text: String, val page: Int, val index: Int)
+data class MenuChar(val text: String, val page: Int, val index: Int, val comment: String = "")
+
+enum class MenuMove { STAY, NEXT, PREVIOUS }
+
+/**
+ * Every candidate the grid walks, in order. Null when the spelling changes mid-walk.
+ * The session is put back on page 0 so the first strip character stays candidate 1.
+ */
+internal fun collectMenu(expected: String, step: (MenuMove) -> RimeSnapshot?): List<MenuChar>? {
+    while (true) {
+        val snap = step(MenuMove.STAY) ?: return null
+        if (snap.preedit != expected) return null
+        if (snap.pageNo == 0) break
+        val before = snap.pageNo
+        val previous = step(MenuMove.PREVIOUS) ?: return null
+        if (previous.pageNo >= before) return null
+    }
+    val out = ArrayList<MenuChar>()
+    while (true) {
+        val snap = step(MenuMove.STAY) ?: return null
+        if (snap.preedit != expected) return null
+        snap.candidates.forEachIndexed { index, candidate ->
+            out.add(MenuChar(candidate.text, snap.pageNo, index, candidate.comment))
+        }
+        if (snap.isLastPage) break
+        val before = snap.pageNo
+        val next = step(MenuMove.NEXT) ?: return null
+        if (next.pageNo <= before) break
+    }
+    while (true) {
+        val snap = step(MenuMove.STAY) ?: return out
+        if (snap.pageNo == 0) break
+        val before = snap.pageNo
+        val previous = step(MenuMove.PREVIOUS) ?: return out
+        if (previous.pageNo >= before) break
+    }
+    return out
+}
 
 /** Stop when the page does not move. A stuck page ends the walk; a count does not. */
 internal fun seekPage(target: Int, read: () -> RimeSnapshot, change: (Boolean) -> Boolean): Boolean {
@@ -26,7 +63,7 @@ internal fun walkPages(read: () -> RimeSnapshot, change: (Boolean) -> Boolean): 
     while (true) {
         val snap = read()
         snap.candidates.forEachIndexed { index, candidate ->
-            out.add(MenuChar(candidate.text, snap.pageNo, index))
+            out.add(MenuChar(candidate.text, snap.pageNo, index, candidate.comment))
         }
         if (snap.isLastPage) break
         val before = snap.pageNo

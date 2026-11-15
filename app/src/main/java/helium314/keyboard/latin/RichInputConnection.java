@@ -636,6 +636,15 @@ public final class RichInputConnection implements PrivateCommandPerformer {
         if (DEBUG_PREVIOUS_TEXT) checkConsistencyForDebug();
     }
 
+    /** Deletes characters after the cursor. The cursor does not move. */
+    public void deleteTextAfterCursor(final int afterLength) {
+        if (afterLength <= 0) return;
+        if (DEBUG_BATCH_NESTING) checkBatchEdit();
+        if (isConnected()) {
+            mIC.deleteSurroundingText(0, afterLength);
+        }
+    }
+
     public void performEditorAction(final int actionId) {
         mIC = mParent.getCurrentInputConnection();
         if (isConnected()) {
