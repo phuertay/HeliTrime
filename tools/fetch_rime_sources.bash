@@ -31,8 +31,8 @@ pin https://github.com/rime/rime-essay.git rime-essay 054920de4f54c9e5994276a96a
 pin https://github.com/lotem/librime-octagram.git librime-octagram 57d18b9f58e5284bd891d559f6bdd16cf60341e9
 ln -sfn "${DEST}/librime-octagram" "${DEST}/librime/plugins/octagram"
 
-# Asset 282335909 is boost-1.89.0-cmake.tar.xz. The release-page URL returns 504.
-BOOST_URL="https://api.github.com/repos/boostorg/boost/releases/assets/282335909"
+# The API asset URL is rate-limited from GitHub Actions and returns 403.
+BOOST_URL="https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-cmake.tar.xz"
 BOOST_SHA="67acec02d0d118b5de9eb441f5fb707b3a1cdd884be00ca24b9a73c995511f74"
 ICONV_URL="https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz"
 ICONV_SHA="3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
@@ -42,9 +42,7 @@ fetch() {
 }
 
 if [[ ! -f "${DEST}/boost/CMakeLists.txt" ]]; then
-  # The Actions token is for this repo. Sending it to boostorg returns 403.
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
-    -H "Accept: application/octet-stream" \
     -L -o "${DEST}/boost-1.89.0-cmake.tar.xz" "${BOOST_URL}"
   echo "${BOOST_SHA}  ${DEST}/boost-1.89.0-cmake.tar.xz" | sha256sum -c -
   tar -xJf "${DEST}/boost-1.89.0-cmake.tar.xz" -C "${DEST}"
