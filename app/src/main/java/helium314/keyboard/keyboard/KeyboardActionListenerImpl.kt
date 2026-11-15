@@ -93,8 +93,9 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         }
 
         if (event.isHandled) {
-            val pinyin = latinIME.pinyinController
-            if (pinyin != null && pinyin.onEvent(event.codePoint, event.keyCode, false)) return true
+            // A steno machine and any other hardware keyboard already produced the text.
+            // librime would compose it again. Firefox then repeats the word and deletes
+            // the wrong characters. The soft keyboard is the only pinyin path.
             inputLogic.onCodeInput(
                 settings.current, event,
                 keyboardSwitcher.keyboardCapsMode, // TODO: this is not necessarily correct for a hardware keyboard right now

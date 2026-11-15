@@ -251,10 +251,19 @@ class PinyinInputController(
         cursorWhereWeSetIt: Boolean = false,
         spanLength: Int = Int.MAX_VALUE,
         cursorInside: Boolean = false,
+        hardwareKeyboard: Boolean = false,
     ): Boolean {
         if (committing || restoring) return true
         if (asciiMode || !ready || failed) return false
-        if (!hasPreedit) return true
+        // No spelling of ours. A steno machine moved the cursor: Latin has to see that and
+        // drop the underline. Leaving it up makes Firefox repeat the word and delete the
+        // wrong characters. An echo of our own commit still sits on the cursor we set, and
+        // that one stays here so the next pinyin letter is not lost.
+        if (!hasPreedit) return !hardwareKeyboard || belated || cursorWhereWeSetIt
+        if (hardwareKeyboard && !belated && !cursorWhereWeSetIt && !cursorInside) {
+            abandonPreedit()
+            return false
+        }
         if (plain) {
             if (belated || cursorWhereWeSetIt || spellingBeforeCursor()) return true
             abandonPreedit()

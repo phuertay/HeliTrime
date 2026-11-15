@@ -85,6 +85,31 @@ class PinyinInputControllerTest {
     }
 
     @Test
+    fun stenoOnFirefoxDoesNotRewriteOrKeepTheUnderline() {
+        val client = FakeRimeClient()
+        val editor = FakeEditor()
+        val controller = controller(client, editor)
+        controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
+        // The machine moved the cursor. Latin has to see it. Our own commit echo stays here.
+        assertFalse(controller.onUpdateSelection(belated = false, hardwareKeyboard = true))
+        assertTrue(controller.onUpdateSelection(belated = true, cursorWhereWeSetIt = true, hardwareKeyboard = true))
+
+        controller.onEvent('n'.code, 0, false)
+        controller.onEvent('i'.code, 0, false)
+        editor.composing = ""
+        editor.beforeOverride = "hello"
+        assertFalse(controller.onUpdateSelection(
+            belated = false,
+            cursorWhereWeSetIt = false,
+            spanLength = -1,
+            hardwareKeyboard = true,
+        ))
+        assertEquals("", editor.committed)
+        assertEquals("", editor.composing)
+        assertFalse(controller.onEvent(0, KeyCode.DELETE, false))
+    }
+
+    @Test
     fun firefoxRemovesTheUnderlineAndTheNextLetterExtendsTheSpelling() {
         val client = FakeRimeClient()
         val editor = FakeEditor()
