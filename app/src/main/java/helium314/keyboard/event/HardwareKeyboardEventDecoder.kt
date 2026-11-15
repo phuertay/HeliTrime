@@ -31,7 +31,9 @@ class HardwareKeyboardEventDecoder(val mDeviceId: Int) : HardwareEventDecoder {
         // do not necessarily map to a unicode character. This represents a physical key, like
         // the key for 'A' or Space, but also Backspace or Ctrl or Caps Lock.
         val keyCode = keyEvent.keyCode
-        val metaState = keyEvent.metaState
+        // Shift is already applied by getUnicodeChar. Leaving it on the event makes the key
+        // functional, so the IME sends the key again and Firefox deletes a word on backspace.
+        val metaState = withoutStickyShift(keyEvent.metaState)
         val isKeyRepeat = 0 != keyEvent.repeatCount
 
         return if (KeyEvent.KEYCODE_DEL == keyCode) {
@@ -65,6 +67,13 @@ class HardwareKeyboardEventDecoder(val mDeviceId: Int) : HardwareEventDecoder {
     }
 
     companion object {
+        private val NON_SHIFT_META = KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK or
+            KeyEvent.META_META_MASK or KeyEvent.META_SYM_ON or KeyEvent.META_FUNCTION_ON
+
+        /** Shift and caps lock are already in the character. Ctrl and Alt stay. */
+        fun withoutStickyShift(metaState: Int): Int =
+            if (metaState and NON_SHIFT_META == 0) 0 else metaState
+
         private fun isDpadDirection(keyCode: Int) = when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_DPAD_DOWN_LEFT, KeyEvent.KEYCODE_DPAD_DOWN_RIGHT, KeyEvent.KEYCODE_DPAD_UP_RIGHT,

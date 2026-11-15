@@ -30,6 +30,7 @@ import android.view.inputmethod.InlineSuggestionsResponse;
 import android.view.inputmethod.InputMethodSubtype;
 
 import helium314.keyboard.accessibility.AccessibilityUtils;
+import helium314.keyboard.compat.AppWorkarounds;
 import helium314.keyboard.compat.ConfigurationCompatKt;
 import helium314.keyboard.compat.EditorInfoCompatUtils;
 import helium314.keyboard.compat.ImeCompat;
@@ -121,10 +122,26 @@ public class LatinIME extends InputMethodService implements
     private final DictionaryFacilitator mOriginalDictionaryFacilitator = mDictionaryFacilitator;
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
     private PinyinInputController mPinyinController;
+    // A Bluetooth steno machine often does not flip Configuration.keyboard. While its keys
+    // are arriving, the editor owns the text: reading or underlining it makes Firefox
+    // restart the input and repeat the word.
+    private boolean mPhysicalKeyboardActive;
     private helium314.keyboard.latin.pinyin.LookupPanel mLookupPanel;
 
     public PinyinInputController getPinyinController() {
         return mPinyinController;
+    }
+
+    /** Firefox receives hardware keys itself. Reading or underlining the field repeats the word. */
+    private boolean physicalKeysGoToEditor() {
+        if (!mPhysicalKeyboardActive) return false;
+        final EditorInfo info = getCurrentInputEditorInfo();
+        return AppWorkarounds.INSTANCE.isFirefoxOrFork(info == null ? null : info.packageName);
+    }
+
+    /** A soft key. The editor no longer owns the following text. */
+    public void noteSoftInput() {
+        mPhysicalKeyboardActive = false;
     }
 
     public RichInputConnection pinyinConnection() {
@@ -265,10 +282,13 @@ public class LatinIME extends InputMethodService implements
             switch (msg.what) {
                 case MSG_UPDATE_SUGGESTION_STRIP:
                     cancelUpdateSuggestionStrip();
+                    if (latinIme.physicalKeysGoToEditor()) break;
                     latinIme.mInputLogic.performUpdateSuggestionStripSync(
                             latinIme.mSettings.getCurrent(), InputStyle.getEntries().get(msg.arg1));
                     break;
                 case MSG_UPDATE_SHIFT_STATE:
+                    // Caps mode reads the field when the cache is empty, and Firefox restarts.
+                    if (latinIme.physicalKeysGoToEditor()) break;
                     latinIme.mKeyboardSwitcher.updateShiftState(latinIme.getCurrentAutoCapsState(),
                             latinIme.getCurrentRecapitalizeState());
                     break;
@@ -282,6 +302,8 @@ public class LatinIME extends InputMethodService implements
                     }
                     break;
                 case MSG_RESUME_SUGGESTIONS:
+                    // This sets a composing span on the word. Firefox then repeats it.
+                    if (latinIme.physicalKeysGoToEditor()) break;
                     latinIme.mInputLogic.restartSuggestionsOnWordTouchedByCursor(latinIme.mSettings.getCurrent());
                     break;
                 case MSG_REOPEN_DICTIONARIES:
@@ -298,6 +320,7 @@ public class LatinIME extends InputMethodService implements
                     latinIme.onTailBatchInputResultShown(suggestedWords);
                     break;
                 case MSG_RESET_CACHES:
+                    if (latinIme.physicalKeysGoToEditor()) break;
                     final SettingsValues settingsValues = latinIme.mSettings.getCurrent();
                     if (latinIme.mInputLogic.retryResetCachesAndReturnSuccess(
                             msg.arg1 == ARG1_TRUE /* tryResumeSuggestions */,
@@ -942,9 +965,14 @@ public class LatinIME extends InputMethodService implements
             // Cursor updates and a text read make Firefox and Pleco restart the input.
             // While 查 is open that restart hides the drawing buttons and drops the stroke.
             final boolean keepPinyinLookup = mPinyinController != null && mPinyinController.isLookupOpen();
-            mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues, !keepPinyinLookup);
+            // A text read or a cursor monitor makes Firefox finish and start the input again.
+            // During a steno burst that restart commits a partial word, then the rest of the
+            // outline is inserted a second time.
+            final boolean hardware = physicalKeysGoToEditor();
+            mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues,
+                    !keepPinyinLookup && !hardware);
 
-            if (keepPinyinLookup) {
+            if (keepPinyinLookup || hardware) {
                 // getTextBeforeCursor here is what makes those editors finish the input again.
                 needToCallLoadKeyboardLater = false;
             } else {
@@ -994,8 +1022,11 @@ public class LatinIME extends InputMethodService implements
             // In apps like Talk, we come here when the text is sent and the field gets emptied and
             // we need to re-evaluate the shift state, but not the whole layout which would be
             // disruptive.
-            // Space state must be updated before calling updateShiftState
-            mKeyboardSwitcher.updateShiftState(getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+            // Space state must be updated before calling updateShiftState.
+            // Caps mode reloads the field text when the cache is empty. Skip that during steno.
+            if (!physicalKeysGoToEditor()) {
+                mKeyboardSwitcher.updateShiftState(getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+            }
         }
         // Set neutral suggestions and show the toolbar if the "Auto show toolbar" setting is enabled.
         if (!mHandler.hasPendingResumeSuggestions()) {
@@ -1012,7 +1043,7 @@ public class LatinIME extends InputMethodService implements
         }
         // resetCaches runs above and a restart clears the composing span. Put the spelling
         // back after that, so the field still shows the whole pinyin.
-        if (mPinyinController != null && !isDifferentTextField
+        if (mPinyinController != null && !isDifferentTextField && !physicalKeysGoToEditor()
                 && (restarting || mPinyinController.isLookupOpen())) {
             mPinyinController.restorePreedit();
         }
@@ -1051,6 +1082,9 @@ public class LatinIME extends InputMethodService implements
 
     void onFinishInputInternal() {
         super.onFinishInput();
+        // Drop a pinyin spelling before finishInput, which would otherwise delete the underlined
+        // letters. The steno word has to stay so the editor can backspace it itself.
+        if (physicalKeysGoToEditor() && mPinyinController != null) mPinyinController.onHardwareKeys();
         if (mPinyinController != null) mPinyinController.onFinishInput();
         Log.i(TAG, "onFinishInput");
 
@@ -1091,6 +1125,13 @@ public class LatinIME extends InputMethodService implements
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
         final SettingsValues settingsValues = mSettings.getCurrent();
+        if (physicalKeysGoToEditor()) {
+            // The machine already put the text in the field. Do not underline it, and do not
+            // read it back: both make Firefox repeat the word and delete the wrong characters.
+            if (mPinyinController != null) mPinyinController.onHardwareKeys();
+            mInputLogic.noteExternalCursor(newSelStart, newSelEnd);
+            return;
+        }
         if (mPinyinController != null) {
             final boolean belated = mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart,
                     newSelStart, oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd);
@@ -1378,6 +1419,7 @@ public class LatinIME extends InputMethodService implements
     // This method is public for testability of LatinIME, but also in the future it should
     // completely replace #onCodeInput.
     public void onEvent(@NonNull final Event event) {
+        noteSoftInput();
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
             mRichImm.switchToShortcutIme(this);
         }
@@ -1671,6 +1713,14 @@ public class LatinIME extends InputMethodService implements
     // Hooks for hardware keyboard
     @Override
     public boolean onKeyDown(final int keyCode, final KeyEvent keyEvent) {
+        // KeyCharacterMap.VIRTUAL_KEYBOARD is -1. A steno machine has a real device id.
+        // Stay in this mode until the next soft key. A timeout lets a pause between
+        // outlines underline the word again, and the next outline then repeats.
+        if (keyEvent.getDeviceId() >= 0) {
+            mPhysicalKeyboardActive = true;
+            mHandler.cancelUpdateSuggestionStrip();
+            mHandler.cancelResumeSuggestions();
+        }
         if (mKeyboardActionListener.onKeyDown(keyCode, keyEvent))
             return true;
         return super.onKeyDown(keyCode, keyEvent);

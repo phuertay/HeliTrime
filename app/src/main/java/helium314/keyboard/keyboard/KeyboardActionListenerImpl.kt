@@ -8,6 +8,7 @@ import android.view.inputmethod.InputMethodSubtype
 import androidx.core.util.forEach
 import androidx.core.view.inputmethod.EditorInfoCompat
 import androidx.core.view.inputmethod.InputContentInfoCompat
+import helium314.keyboard.compat.AppWorkarounds
 import helium314.keyboard.compat.CompatBreakIterator
 import helium314.keyboard.event.Event
 import helium314.keyboard.event.HangulEventDecoder
@@ -52,6 +53,7 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
     private var subtypeSwitchCount = 0
 
     override fun onPressKey(primaryCode: Int, repeatCount: Int, pointerCount: Int, hapticEvent: HapticEvent) {
+        latinIME.noteSoftInput()
         metaOnPressKey(primaryCode)
         keyboardSwitcher.onPressKey(primaryCode, pointerCount, latinIME.currentAutoCapsState, latinIME.currentRecapitalizeState)
         // we need to use LatinIME for handling of key-down audio and haptics
@@ -79,6 +81,20 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     override fun onKeyDown(keyCode: Int, keyEvent: KeyEvent): Boolean {
         emojiAltPhysicalKeyDetector.onKeyDown(keyEvent)
+        // Firefox's page script fights a composing span, and a physical Shift makes
+        // backspace delete a word and the letter arrive twice. Insert the character
+        // the key already produced. Swallow Shift and Caps Lock. Korean still composes.
+        val firefox = AppWorkarounds.isFirefoxOrFork(latinIME.currentInputEditorInfo?.packageName)
+        if (firefox && settings.current.mLocale.language != "ko") {
+            if (isPhysicalShiftOrCaps(keyEvent.keyCode)) return true
+            val event = getHardwareKeyEventDecoder(keyEvent.deviceId).decodeHardwareKey(keyEvent)
+            if (event.isHandled && event.metaState == 0
+                && (event.keyCode == KeyCode.DELETE || event.codePoint > 0)) {
+                latinIME.pinyinController?.onHardwareKeys()
+                return inputLogic.onPlainHardwareEvent(event)
+            }
+            return false
+        }
         if (!settings.current.mEnableHardwareKeyboard)
             return false
 
@@ -93,9 +109,6 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         }
 
         if (event.isHandled) {
-            // A steno machine and any other hardware keyboard already produced the text.
-            // librime would compose it again. Firefox then repeats the word and deletes
-            // the wrong characters. The soft keyboard is the only pinyin path.
             inputLogic.onCodeInput(
                 settings.current, event,
                 keyboardSwitcher.keyboardCapsMode, // TODO: this is not necessarily correct for a hardware keyboard right now
@@ -519,6 +532,11 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
                 }
             }
         }
+    }
+
+    private fun isPhysicalShiftOrCaps(keyCode: Int) = when (keyCode) {
+        KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT, KeyEvent.KEYCODE_CAPS_LOCK -> true
+        else -> false
     }
 
     companion object {

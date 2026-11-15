@@ -110,6 +110,8 @@ public final class RichInputConnection implements PrivateCommandPerformer {
      * expected.  The same caveats as mExpectedSelStart apply.
      */
     private int mExpectedSelEnd = INVALID_CURSOR_POSITION; // in chars, not code points
+    /** True after a physical key moved the cursor. The text cache is from before that key. */
+    private boolean mExternalCursor;
     /**
      * This contains the committed text immediately preceding the cursor and the composing
      * text, if any. It is refreshed when the cursor moves by calling upon the TextView.
@@ -212,6 +214,23 @@ public final class RichInputConnection implements PrivateCommandPerformer {
             mIC.endBatchEdit();
         }
         if (DEBUG_PREVIOUS_TEXT) checkConsistencyForDebug();
+    }
+
+    /**
+     * Record a cursor the editor moved. Does not read the field.
+     */
+    public void noteExternalCursor(final int newSelStart, final int newSelEnd) {
+        mComposingText.setLength(0);
+        mExpectedSelStart = newSelStart;
+        mExpectedSelEnd = newSelEnd;
+        mExternalCursor = true;
+    }
+
+    /** The next soft-key edit needs the real text. A physical-key burst must not call this. */
+    public void reloadTextCacheIfStale() {
+        if (!mExternalCursor) return;
+        mExternalCursor = false;
+        reloadTextCache();
     }
 
     /**
