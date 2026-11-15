@@ -90,9 +90,11 @@ class PinyinInputControllerTest {
         val editor = FakeEditor()
         val controller = controller(client, editor)
         controller.onStartInput(keepSession = false, forceAscii = false, incognitoNow = false)
-        // The machine moved the cursor. Latin has to see it. Our own commit echo stays here.
+        // No spelling. Latin sees the selection on a phone that does not report the machine,
+        // and on a tablet that does, including the echo of the commit.
         assertFalse(controller.onUpdateSelection(belated = false, hardwareKeyboard = true))
-        assertTrue(controller.onUpdateSelection(belated = true, cursorWhereWeSetIt = true, hardwareKeyboard = true))
+        assertFalse(controller.onUpdateSelection(belated = true, cursorWhereWeSetIt = true, hardwareKeyboard = true))
+        assertFalse(controller.onUpdateSelection(belated = true, cursorWhereWeSetIt = true, hardwareKeyboard = false))
 
         controller.onEvent('n'.code, 0, false)
         controller.onEvent('i'.code, 0, false)

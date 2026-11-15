@@ -255,11 +255,12 @@ class PinyinInputController(
     ): Boolean {
         if (committing || restoring) return true
         if (asciiMode || !ready || failed) return false
-        // No spelling of ours. A steno machine moved the cursor: Latin has to see that and
-        // drop the underline. Leaving it up makes Firefox repeat the word and delete the
-        // wrong characters. An echo of our own commit still sits on the cursor we set, and
-        // that one stays here so the next pinyin letter is not lost.
-        if (!hasPreedit) return !hardwareKeyboard || belated || cursorWhereWeSetIt
+        // No spelling of ours. Latin has to see the selection, including the echo of a
+        // commit. Firefox reports that echo with the cursor where we set it and a shorter
+        // underline. Swallowing it leaves the underline up, so the next word is repeated
+        // and backspace deletes the wrong characters. A phone often does not report a
+        // Bluetooth steno machine as a hardware keyboard, and a tablet often does.
+        if (!hasPreedit) return false
         if (hardwareKeyboard && !belated && !cursorWhereWeSetIt && !cursorInside) {
             abandonPreedit()
             return false

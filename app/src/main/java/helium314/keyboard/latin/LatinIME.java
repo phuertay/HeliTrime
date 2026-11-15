@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.Message;
+import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -121,6 +122,9 @@ public class LatinIME extends InputMethodService implements
     private final DictionaryFacilitator mOriginalDictionaryFacilitator = mDictionaryFacilitator;
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
     private PinyinInputController mPinyinController;
+    // A Bluetooth steno machine often does not flip Configuration.keyboard. The key event is
+    // the evidence. Selection updates for a couple of seconds after that are the machine's.
+    private long mLastPhysicalKeyUptime;
     private helium314.keyboard.latin.pinyin.LookupPanel mLookupPanel;
 
     public PinyinInputController getPinyinController() {
@@ -1105,7 +1109,7 @@ public class LatinIME extends InputMethodService implements
             final boolean cursorInside = newSelStart == newSelEnd && composingSpanStart >= 0
                     && newSelStart >= composingSpanStart && newSelStart <= composingSpanEnd;
             if (mPinyinController.onUpdateSelection(belated, cursorWhereWeSetIt, spanLength, cursorInside,
-                    settingsValues.mHasHardwareKeyboard)) {
+                    settingsValues.mHasHardwareKeyboard || physicalKeyRecently())) {
                 return;
             }
         }
@@ -1671,9 +1675,16 @@ public class LatinIME extends InputMethodService implements
     // Hooks for hardware keyboard
     @Override
     public boolean onKeyDown(final int keyCode, final KeyEvent keyEvent) {
+        // KeyCharacterMap.VIRTUAL_KEYBOARD is -1. A steno machine has a real device id.
+        if (keyEvent.getDeviceId() >= 0) mLastPhysicalKeyUptime = SystemClock.uptimeMillis();
         if (mKeyboardActionListener.onKeyDown(keyCode, keyEvent))
             return true;
         return super.onKeyDown(keyCode, keyEvent);
+    }
+
+    private boolean physicalKeyRecently() {
+        return mLastPhysicalKeyUptime != 0
+                && SystemClock.uptimeMillis() - mLastPhysicalKeyUptime < 2000;
     }
 
     @Override
