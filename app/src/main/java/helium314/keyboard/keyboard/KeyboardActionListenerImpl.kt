@@ -81,14 +81,18 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     override fun onKeyDown(keyCode: Int, keyEvent: KeyEvent): Boolean {
         emojiAltPhysicalKeyDetector.onKeyDown(keyEvent)
-        // Firefox's page script fights a composing span: the word is inserted twice and
-        // backspace deletes the wrong characters. A steno machine already produced the text,
-        // so the editor has to receive the keys. HeliBoard does this when hardware keyboard
-        // support is off. Korean still composes through the IME.
+        // Firefox's page script fights a composing span, and a physical Shift makes
+        // backspace delete a word and the letter arrive twice. Insert the character
+        // the key already produced. Swallow Shift and Caps Lock. Korean still composes.
         val firefox = AppWorkarounds.isFirefoxOrFork(latinIME.currentInputEditorInfo?.packageName)
         if (firefox && settings.current.mLocale.language != "ko") {
-            latinIME.pinyinController?.onHardwareKeys()
-            inputLogic.releaseCompositionForHardware()
+            if (isPhysicalShiftOrCaps(keyEvent.keyCode)) return true
+            val event = getHardwareKeyEventDecoder(keyEvent.deviceId).decodeHardwareKey(keyEvent)
+            if (event.isHandled && event.metaState == 0
+                && (event.keyCode == KeyCode.DELETE || event.codePoint > 0)) {
+                latinIME.pinyinController?.onHardwareKeys()
+                return inputLogic.onPlainHardwareEvent(event)
+            }
             return false
         }
         if (!settings.current.mEnableHardwareKeyboard)
@@ -528,6 +532,11 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
                 }
             }
         }
+    }
+
+    private fun isPhysicalShiftOrCaps(keyCode: Int) = when (keyCode) {
+        KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT, KeyEvent.KEYCODE_CAPS_LOCK -> true
+        else -> false
     }
 
     companion object {
