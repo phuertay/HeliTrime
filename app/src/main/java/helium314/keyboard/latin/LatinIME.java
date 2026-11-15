@@ -1104,7 +1104,8 @@ public class LatinIME extends InputMethodService implements
                     ? -1 : composingSpanEnd - composingSpanStart;
             final boolean cursorInside = newSelStart == newSelEnd && composingSpanStart >= 0
                     && newSelStart >= composingSpanStart && newSelStart <= composingSpanEnd;
-            if (mPinyinController.onUpdateSelection(belated, cursorWhereWeSetIt, spanLength, cursorInside)) {
+            if (mPinyinController.onUpdateSelection(belated, cursorWhereWeSetIt, spanLength, cursorInside,
+                    settingsValues.mHasHardwareKeyboard)) {
                 return;
             }
         }
