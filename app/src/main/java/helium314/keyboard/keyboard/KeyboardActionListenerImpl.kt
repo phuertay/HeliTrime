@@ -8,6 +8,7 @@ import android.view.inputmethod.InputMethodSubtype
 import androidx.core.util.forEach
 import androidx.core.view.inputmethod.EditorInfoCompat
 import androidx.core.view.inputmethod.InputContentInfoCompat
+import helium314.keyboard.compat.AppWorkarounds
 import helium314.keyboard.compat.CompatBreakIterator
 import helium314.keyboard.event.Event
 import helium314.keyboard.event.HangulEventDecoder
@@ -52,6 +53,7 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
     private var subtypeSwitchCount = 0
 
     override fun onPressKey(primaryCode: Int, repeatCount: Int, pointerCount: Int, hapticEvent: HapticEvent) {
+        latinIME.noteSoftInput()
         metaOnPressKey(primaryCode)
         keyboardSwitcher.onPressKey(primaryCode, pointerCount, latinIME.currentAutoCapsState, latinIME.currentRecapitalizeState)
         // we need to use LatinIME for handling of key-down audio and haptics
@@ -79,6 +81,16 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     override fun onKeyDown(keyCode: Int, keyEvent: KeyEvent): Boolean {
         emojiAltPhysicalKeyDetector.onKeyDown(keyEvent)
+        // Firefox's page script fights a composing span: the word is inserted twice and
+        // backspace deletes the wrong characters. A steno machine already produced the text,
+        // so the editor has to receive the keys. HeliBoard does this when hardware keyboard
+        // support is off. Korean still composes through the IME.
+        val firefox = AppWorkarounds.isFirefoxOrFork(latinIME.currentInputEditorInfo?.packageName)
+        if (firefox && settings.current.mLocale.language != "ko") {
+            latinIME.pinyinController?.onHardwareKeys()
+            inputLogic.releaseCompositionForHardware()
+            return false
+        }
         if (!settings.current.mEnableHardwareKeyboard)
             return false
 
@@ -93,9 +105,6 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         }
 
         if (event.isHandled) {
-            // A steno machine and any other hardware keyboard already produced the text.
-            // librime would compose it again. Firefox then repeats the word and deletes
-            // the wrong characters. The soft keyboard is the only pinyin path.
             inputLogic.onCodeInput(
                 settings.current, event,
                 keyboardSwitcher.keyboardCapsMode, // TODO: this is not necessarily correct for a hardware keyboard right now

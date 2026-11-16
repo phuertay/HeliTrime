@@ -36,7 +36,7 @@ object AppWorkarounds {
     // of course they ignore android keycodes, because why should they stick to the same behavior we know from all other apps
     fun doesntCareAboutKeycodePaste(packageName: String?) = isFirefoxOrFork(packageName)
 
-    private fun isFirefoxOrFork(packageName: String?) = when (packageName) {
+    fun isFirefoxOrFork(packageName: String?) = when (packageName) {
         "org.mozilla.fennec_fdroid", "org.mozilla.fenix", "org.mozilla.firefox_beta", "org.mozilla.focus",
         "org.mozilla.klar", "org.mozilla.firefox", "org.ironfoxoss.ironfox", "org.ironfoxoss.ironfox.nightly",
         "org.torproject.torbrowser", "org.torproject.torbrowser_alpha", "net.waterfox.android.release",
