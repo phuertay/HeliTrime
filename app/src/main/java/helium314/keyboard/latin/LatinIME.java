@@ -606,7 +606,6 @@ public class LatinIME extends InputMethodService implements
         mReceiver.register(this);
 
         StatsUtils.onCreate(mSettings.getCurrent(), mRichImm);
-        HardwareKeyLog.init(this);
     }
 
     private void loadSettings() {
@@ -865,7 +864,6 @@ public class LatinIME extends InputMethodService implements
     }
 
     private void onStartInputInternal(EditorInfo editorInfo, boolean restarting) {
-        HardwareKeyLog.input("start", editorInfo, restarting);
         super.onStartInput(editorInfo, restarting);
 
         RichInputMethodSubtype subtypeForApp = editorInfo == null
@@ -882,7 +880,6 @@ public class LatinIME extends InputMethodService implements
     }
 
     void onStartInputViewInternal(EditorInfo editorInfo, boolean restarting) {
-        HardwareKeyLog.input("startView", editorInfo, restarting);
         super.onStartInputView(editorInfo, restarting);
 
         setGestureDataGatheringMode(editorInfo, restarting);
@@ -1117,9 +1114,6 @@ public class LatinIME extends InputMethodService implements
     public void onUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd,
                                   int composingSpanStart, int composingSpanEnd) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, composingSpanStart, composingSpanEnd);
-        if (mPhysicalKeyboardActive) {
-            HardwareKeyLog.selection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, composingSpanStart, composingSpanEnd);
-        }
         if (DebugFlags.DEBUG_ENABLED) {
             Log.i(TAG, "onUpdateSelection: oss=" + oldSelStart + ", ose=" + oldSelEnd
                     + ", nss=" + newSelStart + ", nse=" + newSelEnd
@@ -1727,37 +1721,16 @@ public class LatinIME extends InputMethodService implements
             mHandler.cancelUpdateSuggestionStrip();
             mHandler.cancelResumeSuggestions();
         }
-        final boolean consumedByUs = mKeyboardActionListener.onKeyDown(keyCode, keyEvent);
-        if (consumedByUs) {
-            logHardwareKey("down", keyEvent, true);
+        if (mKeyboardActionListener.onKeyDown(keyCode, keyEvent))
             return true;
-        }
-        final boolean consumedByFramework = super.onKeyDown(keyCode, keyEvent);
-        logHardwareKey("down", keyEvent, consumedByFramework);
-        return consumedByFramework;
+        return super.onKeyDown(keyCode, keyEvent);
     }
 
     @Override
     public boolean onKeyUp(final int keyCode, final KeyEvent keyEvent) {
-        final boolean consumedByUs = mKeyboardActionListener.onKeyUp(keyCode, keyEvent);
-        if (consumedByUs) {
-            logHardwareKey("up", keyEvent, true);
+        if (mKeyboardActionListener.onKeyUp(keyCode, keyEvent))
             return true;
-        }
-        final boolean consumedByFramework = super.onKeyUp(keyCode, keyEvent);
-        logHardwareKey("up", keyEvent, consumedByFramework);
-        return consumedByFramework;
-    }
-
-    private void logHardwareKey(final String action, final KeyEvent keyEvent, final boolean consumed) {
-        try {
-            final EditorInfo info = getCurrentInputEditorInfo();
-            final String pkg = info == null ? null : info.packageName;
-            HardwareKeyLog.key(action, keyEvent, pkg, AppWorkarounds.INSTANCE.isFirefoxOrFork(pkg),
-                    mSettings.getCurrent().mEnableHardwareKeyboard, consumed);
-        } catch (RuntimeException ignored) {
-            // A log failure must not swallow the key.
-        }
+        return super.onKeyUp(keyCode, keyEvent);
     }
 
     // todo: onKeyDown and onKeyUp are the main events we are interested in. There are two more events
