@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
 import helium314.keyboard.latin.BuildConfig
+import helium314.keyboard.latin.HardwareKeyLog
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.common.Links
 import helium314.keyboard.latin.settings.DebugSettings
@@ -186,7 +187,8 @@ fun createAboutSettings(context: Context) = listOf(
                     os.writer().use { writer ->
                         val logcat = Runtime.getRuntime().exec("logcat -d -b all *:W").inputStream.use { it.reader().readText() }
                         val internal = Log.getLog().joinToString("\n")
-                        writer.write(logcat + "\n\n" + internal)
+                        val hardware = HardwareKeyLog.read(ctx)
+                        writer.write(logcat + "\n\n-- app log --\n" + internal + "\n\n-- hardware-key.log --\n" + hardware)
                     }
                 }
             }

@@ -36,6 +36,7 @@ import helium314.keyboard.keyboard.emoji.EmojiSearchActivity;
 import helium314.keyboard.keyboard.emoji.RecentEmojis;
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode;
 import helium314.keyboard.latin.CapsMode;
+import helium314.keyboard.latin.HardwareKeyLog;
 import helium314.keyboard.latin.InputStyle;
 import helium314.keyboard.latin.common.CoordinateUtils;
 import helium314.keyboard.latin.dictionary.Dictionary;
@@ -479,7 +480,10 @@ public final class InputLogic {
         resetComposingState(true /* alsoResetLastComposedWord */);
         mSpaceState = SpaceState.NONE;
         mDeleteCount = 0;
-        if (composing) mConnection.finishComposingText();
+        if (composing) {
+            HardwareKeyLog.editor("finishComposingText");
+            mConnection.finishComposingText();
+        }
         mConnection.noteExternalCursor(newSelStart, newSelEnd);
     }
 

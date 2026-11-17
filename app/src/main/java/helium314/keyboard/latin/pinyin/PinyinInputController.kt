@@ -2,6 +2,7 @@ package helium314.keyboard.latin.pinyin
 
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
+import helium314.keyboard.latin.HardwareKeyLog
 
 /**
  * Key policy for the luna_pinyin subtype. Latin typing stays in InputLogic:
@@ -300,7 +301,10 @@ class PinyinInputController(
         shownSnapshot = null
         committing = true
         try {
-            if (underlined) editor.finishComposingText()
+            if (underlined) {
+                HardwareKeyLog.editor("pinyinFinishComposingText")
+                editor.finishComposingText()
+            }
             if (client.hasSession()) client.clearComposition()
         } finally {
             committing = false
