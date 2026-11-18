@@ -147,7 +147,6 @@ public class KeyboardView extends View {
         keyAttr.recycle();
 
         mPaint.setAntiAlias(true);
-        setFitsSystemWindows(true);
     }
 
     @Nullable

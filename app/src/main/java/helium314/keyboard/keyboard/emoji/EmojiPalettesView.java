@@ -216,7 +216,6 @@ public final class EmojiPalettesView extends LinearLayout
                 R.styleable.EmojiPalettesView, defStyle, R.style.EmojiPalettesView);
         mEmojiCategory = new EmojiCategory(context, layoutSet, emojiPalettesViewAttr);
         emojiPalettesViewAttr.recycle();
-        setFitsSystemWindows(true);
     }
 
     @Override

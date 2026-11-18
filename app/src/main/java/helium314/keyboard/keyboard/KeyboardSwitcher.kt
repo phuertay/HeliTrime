@@ -213,8 +213,10 @@ class KeyboardSwitcher private constructor() {
         // This method may be called before onCreateInputView.
         val inputView = inputView ?: return
 
+        inputView.root.applySystemBarBand()
         val visibleKeyboardView = inputView.wrapperView
         val inputHeight = inputView.root.height
+        val systemBar = if (inputView.keyboardFrame.isShown) inputView.keyboardFrame.paddingBottom else 0
         if (isImeSuppressedByHardwareKeyboard(Settings.getValues(), keyboardSwitchState) && !visibleKeyboardView.isShown) {
             // If there is a hardware keyboard and a visible software keyboard view has been hidden,
             // no visual element will be shown on the screen.
@@ -225,7 +227,7 @@ class KeyboardSwitcher private constructor() {
         }
         val stripContainer = inputView.stripContainer
         val stripHeight = if (stripContainer.isShown) stripContainer.height else 0
-        var visibleTopY = inputHeight - (if (visibleKeyboardView.isShown) visibleKeyboardView.height else 0) - stripHeight
+        var visibleTopY = inputHeight - (if (visibleKeyboardView.isShown) visibleKeyboardView.height else 0) - stripHeight - systemBar
         if (Settings.getValues().mIsFloatingKeyboard)
             visibleTopY = themeContext.resources.displayMetrics.heightPixels
 
@@ -240,7 +242,9 @@ class KeyboardSwitcher private constructor() {
             var touchLeft = 0
             var touchTop = if (isShowingPopupKeysPanel) 0 else visibleTopY
             var touchRight = visibleKeyboardView.width
-            var touchBottom = inputHeight + EXTENDED_TOUCHABLE_REGION_HEIGHT // Extend touchable region below the keyboard.
+            // Below the keys the system bar takes the touch (hide keyboard, switch keyboard).
+            var touchBottom = if (systemBar > 0) inputHeight - systemBar
+                else inputHeight + EXTENDED_TOUCHABLE_REGION_HEIGHT
             if (Settings.getValues().mIsFloatingKeyboard) {
                 val xy = FloatingKeyboardUtils.readPosition(themeContext, Int.MAX_VALUE, Int.MAX_VALUE)
                 touchLeft = xy.first
