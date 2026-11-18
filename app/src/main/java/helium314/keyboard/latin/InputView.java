@@ -12,6 +12,7 @@ import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowInsets;
 import android.widget.FrameLayout;
 
 import androidx.core.view.ViewKt;
@@ -52,6 +53,29 @@ public final class InputView extends FrameLayout {
 
     public void setKeyboardTopPadding(final int keyboardTopPadding) {
         mKeyboardTopPaddingForwarder.setKeyboardTopPadding(keyboardTopPadding);
+    }
+
+    /**
+     * Keep every keyboard surface above the system bar (hide keyboard, switch keyboard).
+     * The padding is on the frame, so the keys, emoji grid, clipboard, and pinyin pad all
+     * sit in the same box. The frame background fills the strip the bar covers.
+     */
+    public void applySystemBarBand() {
+        applySystemBarBand(getRootWindowInsets());
+    }
+
+    @Override
+    public WindowInsets onApplyWindowInsets(final WindowInsets insets) {
+        applySystemBarBand(insets);
+        return super.onApplyWindowInsets(insets);
+    }
+
+    private void applySystemBarBand(final WindowInsets insets) {
+        final View frame = findViewById(R.id.main_keyboard_frame);
+        if (frame == null) return;
+        final int band = SystemBarBand.reservedBottom(this, insets);
+        if (frame.getPaddingBottom() == band) return;
+        frame.setPadding(frame.getPaddingLeft(), frame.getPaddingTop(), frame.getPaddingRight(), band);
     }
 
     @Override
@@ -111,6 +135,7 @@ public final class InputView extends FrameLayout {
 
         // Work around inset application being unreliable
         requestApplyInsets();
+        applySystemBarBand(getRootWindowInsets());
 
         // need to update the floating keyboard position after applying insets
         if (Settings.getValues().mIsFloatingKeyboard)
