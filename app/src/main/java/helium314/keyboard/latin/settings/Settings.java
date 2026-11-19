@@ -135,6 +135,10 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_KEY_LONGPRESS_TIMEOUT = "key_longpress_timeout";
     public static final String PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY = "enable_emoji_alt_physical_key";
     public static final String PREF_ENABLE_HARDWARE_KEYBOARD = "enable_hardware_keyboard";
+    public static final String PREF_HARDWARE_KEY_DELIVERY = "hardware_key_delivery";
+    public static final String PREF_HARDWARE_KEY_COALESCE_MS = "hardware_key_coalesce_ms";
+    public static final String PREF_HARDWARE_KEY_DOSE_MS = "hardware_key_dose_ms";
+    public static final String PREF_HARDWARE_KEY_BATCH_EDIT = "hardware_key_batch_edit";
     public static final String PREF_GESTURE_PREVIEW_TRAIL = "gesture_preview_trail";
     public static final String PREF_GESTURE_FLOATING_PREVIEW_TEXT = "gesture_floating_preview_text";
     public static final String PREF_GESTURE_FLOATING_PREVIEW_DYNAMIC = "gesture_floating_preview_dynamic";

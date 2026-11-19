@@ -30,7 +30,6 @@ import android.view.inputmethod.InlineSuggestionsResponse;
 import android.view.inputmethod.InputMethodSubtype;
 
 import helium314.keyboard.accessibility.AccessibilityUtils;
-import helium314.keyboard.compat.AppWorkarounds;
 import helium314.keyboard.compat.ConfigurationCompatKt;
 import helium314.keyboard.compat.EditorInfoCompatUtils;
 import helium314.keyboard.compat.ImeCompat;
@@ -123,8 +122,8 @@ public class LatinIME extends InputMethodService implements
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
     private PinyinInputController mPinyinController;
     // A Bluetooth steno machine often does not flip Configuration.keyboard. While its keys
-    // are arriving, the editor owns the text: reading or underlining it makes Firefox
-    // restart the input and repeat the word.
+    // are arriving in pass-through / coalesce / dose mode, reading or underlining the field
+    // races the burst and can repeat or split the word.
     private boolean mPhysicalKeyboardActive;
     private helium314.keyboard.latin.pinyin.LookupPanel mLookupPanel;
 
@@ -132,11 +131,16 @@ public class LatinIME extends InputMethodService implements
         return mPinyinController;
     }
 
-    /** Firefox receives hardware keys itself. Reading or underlining the field repeats the word. */
+    /**
+     * Hardware keys are not going through the normal IME compose path right now.
+     * Skip field reads and underlining until the next soft key.
+     */
     private boolean physicalKeysGoToEditor() {
         if (!mPhysicalKeyboardActive) return false;
-        final EditorInfo info = getCurrentInputEditorInfo();
-        return AppWorkarounds.INSTANCE.isFirefoxOrFork(info == null ? null : info.packageName);
+        final SettingsValues sv = mSettings.getCurrent();
+        if (sv == null) return false;
+        if (!sv.mEnableHardwareKeyboard) return true;
+        return sv.mHardwareKeyDeliveryMode != HardwareKeyDeliveryMode.IME;
     }
 
     /** A soft key. The editor no longer owns the following text. */
@@ -287,7 +291,7 @@ public class LatinIME extends InputMethodService implements
                             latinIme.mSettings.getCurrent(), InputStyle.getEntries().get(msg.arg1));
                     break;
                 case MSG_UPDATE_SHIFT_STATE:
-                    // Caps mode reads the field when the cache is empty, and Firefox restarts.
+                    // Caps mode reads the field when the cache is empty.
                     if (latinIme.physicalKeysGoToEditor()) break;
                     latinIme.mKeyboardSwitcher.updateShiftState(latinIme.getCurrentAutoCapsState(),
                             latinIme.getCurrentRecapitalizeState());
@@ -302,7 +306,7 @@ public class LatinIME extends InputMethodService implements
                     }
                     break;
                 case MSG_RESUME_SUGGESTIONS:
-                    // This sets a composing span on the word. Firefox then repeats it.
+                    // This sets a composing span on the word mid-burst.
                     if (latinIme.physicalKeysGoToEditor()) break;
                     latinIme.mInputLogic.restartSuggestionsOnWordTouchedByCursor(latinIme.mSettings.getCurrent());
                     break;
@@ -1126,8 +1130,7 @@ public class LatinIME extends InputMethodService implements
         // we want to show suggestions anyway.
         final SettingsValues settingsValues = mSettings.getCurrent();
         if (physicalKeysGoToEditor()) {
-            // The machine already put the text in the field. Do not underline it, and do not
-            // read it back: both make Firefox repeat the word and delete the wrong characters.
+            // Pass-through / coalesce / dose owns the text. Do not underline or read it back.
             if (mPinyinController != null) mPinyinController.onHardwareKeys();
             mInputLogic.noteExternalCursor(newSelStart, newSelEnd);
             return;

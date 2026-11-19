@@ -611,6 +611,24 @@ language, hence "No language". -->
     <string name="prefs_enable_emoji_alt_physical_key_summary">Physical Alt key shows the emoji palette</string>
     <!-- Title of the setting for enabling hardware keyboard support -->
     <string name="prefs_enable_hardware_keyboard">Hardware keyboard support</string>
+    <!-- Title of the setting for how hardware keys are delivered to the editor -->
+    <string name="prefs_hardware_key_delivery">Hardware key delivery</string>
+    <!-- Hardware key delivery: existing IME InputLogic path -->
+    <string name="prefs_hardware_key_delivery_ime">Through IME</string>
+    <!-- Hardware key delivery: let the app receive KeyEvents -->
+    <string name="prefs_hardware_key_delivery_pass_through">Pass through to app</string>
+    <!-- Hardware key delivery: buffer a burst then commit once -->
+    <string name="prefs_hardware_key_delivery_coalesce">Coalesce bursts</string>
+    <!-- Hardware key delivery: pace characters one by one -->
+    <string name="prefs_hardware_key_delivery_dose">Dose characters</string>
+    <!-- Title of the coalesce idle delay slider -->
+    <string name="prefs_hardware_key_coalesce_ms">Coalesce idle delay</string>
+    <!-- Title of the dose interval slider -->
+    <string name="prefs_hardware_key_dose_ms">Dose interval</string>
+    <!-- Title of the batch-edit toggle for buffered hardware commits -->
+    <string name="prefs_hardware_key_batch_edit">Batch edit commits</string>
+    <!-- Description of the batch-edit toggle -->
+    <string name="prefs_hardware_key_batch_edit_summary">Wrap coalesce/dose commits in beginBatchEdit/endBatchEdit</string>
     <!-- Title of the button to revert to the default value of the device in the settings dialog. Preferably 10 characters or less. -->
     <string name="button_default">Default</string>
     <!-- Title of the setup wizard welcome screen. %s is the application name. -->

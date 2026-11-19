@@ -129,6 +129,10 @@ object Defaults {
     // physical layout ignored https://github.com/HeliBorg/HeliBoard/issues/1957, https://github.com/HeliBorg/HeliBoard/issues/1949
     // physical layout ignored for uppercase letters only (?) https://github.com/HeliBorg/HeliBoard/issues/2030
     const val PREF_ENABLE_HARDWARE_KEYBOARD = false
+    const val PREF_HARDWARE_KEY_DELIVERY = "IME"
+    const val PREF_HARDWARE_KEY_COALESCE_MS = 40
+    const val PREF_HARDWARE_KEY_DOSE_MS = 15
+    const val PREF_HARDWARE_KEY_BATCH_EDIT = false
     const val PREF_GESTURE_PREVIEW_TRAIL = true
     const val PREF_GESTURE_FLOATING_PREVIEW_TEXT = true
     const val PREF_GESTURE_FLOATING_PREVIEW_DYNAMIC = true
