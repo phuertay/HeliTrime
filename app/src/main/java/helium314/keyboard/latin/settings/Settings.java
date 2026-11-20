@@ -595,7 +595,21 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     /** Remembers the last editor package for the hardware delivery "current app" button. */
     public void writeLastEditorPackage(@Nullable final String packageName) {
         if (StringUtils.isEmpty(packageName)) return;
+        // Settings / search fields in this IME must not overwrite the real target app.
+        if (mContext != null && packageName.equals(mContext.getPackageName())) return;
         mPrefs.edit().putString(PREF_LAST_EDITOR_PACKAGE, packageName).apply();
+    }
+
+    /** Last non-self editor package, or empty when unset / still pointing at this IME. */
+    @NonNull
+    public String readLastEditorPackage() {
+        final String pkg = mPrefs.getString(PREF_LAST_EDITOR_PACKAGE, "");
+        if (StringUtils.isEmpty(pkg)) return "";
+        if (mContext != null && pkg.equals(mContext.getPackageName())) {
+            mPrefs.edit().remove(PREF_LAST_EDITOR_PACKAGE).apply();
+            return "";
+        }
+        return pkg;
     }
 
     public RichInputMethodSubtype getSubtypeForApp(String packageName) {

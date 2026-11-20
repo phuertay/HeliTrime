@@ -73,7 +73,13 @@ fun HardwareKeyAppDeliveryPreference(setting: Setting) {
 
     val raw = prefs.getString(Settings.PREF_HARDWARE_KEY_APP_DELIVERY, Defaults.PREF_HARDWARE_KEY_APP_DELIVERY).orEmpty()
     val overrides = remember(raw, b?.value) { HardwareKeyAppOverride.parseAll(raw) }
-    val lastPackage = prefs.getString(Settings.PREF_LAST_EDITOR_PACKAGE, "").orEmpty()
+    val lastPackage = run {
+        val pkg = prefs.getString(Settings.PREF_LAST_EDITOR_PACKAGE, "").orEmpty()
+        if (pkg.isEmpty() || pkg == ctx.packageName) {
+            if (pkg == ctx.packageName) prefs.edit { remove(Settings.PREF_LAST_EDITOR_PACKAGE) }
+            ""
+        } else pkg
+    }
     val defaultPace = HardwareKeyImePace.fromPref(
         prefs.getString(Settings.PREF_HARDWARE_KEY_IME_PACE, Defaults.PREF_HARDWARE_KEY_IME_PACE)
     )
