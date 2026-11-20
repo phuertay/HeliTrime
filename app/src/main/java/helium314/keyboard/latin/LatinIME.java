@@ -143,6 +143,18 @@ public class LatinIME extends InputMethodService implements
         return sv.mHardwareKeyDeliveryMode != HardwareKeyDeliveryMode.IME;
     }
 
+    /**
+     * Through IME with quiet burst: keep composing, but do not resume suggestions,
+     * reload the field, or reset input state from selection noise mid-burst.
+     */
+    private boolean quietHardwareBurst() {
+        if (!mPhysicalKeyboardActive) return false;
+        final SettingsValues sv = mSettings.getCurrent();
+        return sv != null && sv.mEnableHardwareKeyboard
+                && sv.mHardwareKeyDeliveryMode == HardwareKeyDeliveryMode.IME
+                && sv.mHardwareKeyQuietBurst;
+    }
+
     /** A soft key. The editor no longer owns the following text. */
     public void noteSoftInput() {
         mPhysicalKeyboardActive = false;
@@ -286,13 +298,13 @@ public class LatinIME extends InputMethodService implements
             switch (msg.what) {
                 case MSG_UPDATE_SUGGESTION_STRIP:
                     cancelUpdateSuggestionStrip();
-                    if (latinIme.physicalKeysGoToEditor()) break;
+                    if (latinIme.physicalKeysGoToEditor() || latinIme.quietHardwareBurst()) break;
                     latinIme.mInputLogic.performUpdateSuggestionStripSync(
                             latinIme.mSettings.getCurrent(), InputStyle.getEntries().get(msg.arg1));
                     break;
                 case MSG_UPDATE_SHIFT_STATE:
                     // Caps mode reads the field when the cache is empty.
-                    if (latinIme.physicalKeysGoToEditor()) break;
+                    if (latinIme.physicalKeysGoToEditor() || latinIme.quietHardwareBurst()) break;
                     latinIme.mKeyboardSwitcher.updateShiftState(latinIme.getCurrentAutoCapsState(),
                             latinIme.getCurrentRecapitalizeState());
                     break;
@@ -307,7 +319,7 @@ public class LatinIME extends InputMethodService implements
                     break;
                 case MSG_RESUME_SUGGESTIONS:
                     // This sets a composing span on the word mid-burst.
-                    if (latinIme.physicalKeysGoToEditor()) break;
+                    if (latinIme.physicalKeysGoToEditor() || latinIme.quietHardwareBurst()) break;
                     latinIme.mInputLogic.restartSuggestionsOnWordTouchedByCursor(latinIme.mSettings.getCurrent());
                     break;
                 case MSG_REOPEN_DICTIONARIES:
@@ -324,7 +336,7 @@ public class LatinIME extends InputMethodService implements
                     latinIme.onTailBatchInputResultShown(suggestedWords);
                     break;
                 case MSG_RESET_CACHES:
-                    if (latinIme.physicalKeysGoToEditor()) break;
+                    if (latinIme.physicalKeysGoToEditor() || latinIme.quietHardwareBurst()) break;
                     final SettingsValues settingsValues = latinIme.mSettings.getCurrent();
                     if (latinIme.mInputLogic.retryResetCachesAndReturnSuccess(
                             msg.arg1 == ARG1_TRUE /* tryResumeSuggestions */,
@@ -972,7 +984,7 @@ public class LatinIME extends InputMethodService implements
             // A text read or a cursor monitor makes Firefox finish and start the input again.
             // During a steno burst that restart commits a partial word, then the rest of the
             // outline is inserted a second time.
-            final boolean hardware = physicalKeysGoToEditor();
+            final boolean hardware = physicalKeysGoToEditor() || quietHardwareBurst();
             mInputLogic.startInput(mRichImm.getCombiningRulesExtraValueOfCurrentSubtype(), currentSettingsValues,
                     !keepPinyinLookup && !hardware);
 
@@ -1028,7 +1040,7 @@ public class LatinIME extends InputMethodService implements
             // disruptive.
             // Space state must be updated before calling updateShiftState.
             // Caps mode reloads the field text when the cache is empty. Skip that during steno.
-            if (!physicalKeysGoToEditor()) {
+            if (!physicalKeysGoToEditor() && !quietHardwareBurst()) {
                 mKeyboardSwitcher.updateShiftState(getCurrentAutoCapsState(), getCurrentRecapitalizeState());
             }
         }
@@ -1048,6 +1060,7 @@ public class LatinIME extends InputMethodService implements
         // resetCaches runs above and a restart clears the composing span. Put the spelling
         // back after that, so the field still shows the whole pinyin.
         if (mPinyinController != null && !isDifferentTextField && !physicalKeysGoToEditor()
+                && !quietHardwareBurst()
                 && (restarting || mPinyinController.isLookupOpen())) {
             mPinyinController.restorePreedit();
         }
@@ -1133,6 +1146,11 @@ public class LatinIME extends InputMethodService implements
             // Pass-through / coalesce / dose owns the text. Do not underline or read it back.
             if (mPinyinController != null) mPinyinController.onHardwareKeys();
             mInputLogic.noteExternalCursor(newSelStart, newSelEnd);
+            return;
+        }
+        if (quietHardwareBurst()) {
+            // Through IME: keep the composing span. Selection echoes from our own commits
+            // must not reset state or resume suggestions while keys are still arriving.
             return;
         }
         if (mPinyinController != null) {

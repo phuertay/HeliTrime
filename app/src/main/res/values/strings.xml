@@ -629,6 +629,10 @@ language, hence "No language". -->
     <string name="prefs_hardware_key_batch_edit">Batch edit commits</string>
     <!-- Description of the batch-edit toggle -->
     <string name="prefs_hardware_key_batch_edit_summary">Wrap coalesce/dose commits in beginBatchEdit/endBatchEdit</string>
+    <!-- Title of quiet burst for Through IME hardware delivery -->
+    <string name="prefs_hardware_key_quiet_burst">Quiet burst</string>
+    <!-- Description of quiet burst -->
+    <string name="prefs_hardware_key_quiet_burst_summary">While physical keys arrive through the IME, skip suggestion resume and field reads so longer outlines stay intact</string>
     <!-- Title of the button to revert to the default value of the device in the settings dialog. Preferably 10 characters or less. -->
     <string name="button_default">Default</string>
     <!-- Title of the setup wizard welcome screen. %s is the application name. -->

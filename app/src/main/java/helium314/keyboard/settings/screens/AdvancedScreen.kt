@@ -102,6 +102,9 @@ fun AdvancedSettingsScreen(
                 it == "COALESCE" || it == "DOSE"
             })
             Settings.PREF_HARDWARE_KEY_BATCH_EDIT else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD)
+            && prefs.getString(Settings.PREF_HARDWARE_KEY_DELIVERY, Defaults.PREF_HARDWARE_KEY_DELIVERY) == "IME")
+            Settings.PREF_HARDWARE_KEY_QUIET_BURST else null,
         if (BuildConfig.BUILD_TYPE != "nouserlib") SettingsWithoutKey.LOAD_GESTURE_LIB else null
     )
     SearchSettingsScreen(
@@ -325,6 +328,10 @@ fun createAdvancedSettings(context: Context) = listOf(
     Setting(context, Settings.PREF_HARDWARE_KEY_BATCH_EDIT,
         R.string.prefs_hardware_key_batch_edit, R.string.prefs_hardware_key_batch_edit_summary) {
         SwitchPreference(it, Defaults.PREF_HARDWARE_KEY_BATCH_EDIT)
+    },
+    Setting(context, Settings.PREF_HARDWARE_KEY_QUIET_BURST,
+        R.string.prefs_hardware_key_quiet_burst, R.string.prefs_hardware_key_quiet_burst_summary) {
+        SwitchPreference(it, Defaults.PREF_HARDWARE_KEY_QUIET_BURST)
     },
     Setting(context, SettingsWithoutKey.LOAD_GESTURE_LIB, R.string.load_gesture_library, R.string.load_gesture_library_summary) {
         LoadGestureLibPreference(it)

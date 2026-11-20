@@ -122,6 +122,7 @@ public class SettingsValues {
     public final int mHardwareKeyCoalesceMs;
     public final int mHardwareKeyDoseMs;
     public final boolean mHardwareKeyBatchEdit;
+    public final boolean mHardwareKeyQuietBurst;
     public final boolean mIsSplitKeyboardEnabled;
     public final float mSplitKeyboardSpacerRelativeWidth;
     public final boolean mQuickPinToolbarKeys;
@@ -271,6 +272,7 @@ public class SettingsValues {
         mHardwareKeyCoalesceMs = prefs.getInt(Settings.PREF_HARDWARE_KEY_COALESCE_MS, Defaults.PREF_HARDWARE_KEY_COALESCE_MS);
         mHardwareKeyDoseMs = prefs.getInt(Settings.PREF_HARDWARE_KEY_DOSE_MS, Defaults.PREF_HARDWARE_KEY_DOSE_MS);
         mHardwareKeyBatchEdit = prefs.getBoolean(Settings.PREF_HARDWARE_KEY_BATCH_EDIT, Defaults.PREF_HARDWARE_KEY_BATCH_EDIT);
+        mHardwareKeyQuietBurst = prefs.getBoolean(Settings.PREF_HARDWARE_KEY_QUIET_BURST, Defaults.PREF_HARDWARE_KEY_QUIET_BURST);
         mGestureInputEnabled = JniUtils.sHaveGestureLib && prefs.getBoolean(Settings.PREF_GESTURE_INPUT, Defaults.PREF_GESTURE_INPUT);
         mGestureTrailEnabled = prefs.getBoolean(Settings.PREF_GESTURE_PREVIEW_TRAIL, Defaults.PREF_GESTURE_PREVIEW_TRAIL);
         mGestureFloatingPreviewTextEnabled = !mInputAttributes.mDisableGestureFloatingPreviewText
