@@ -54,9 +54,9 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             handler = latinIME.mHandler,
             dispatch = { event ->
                 latinIME.pinyinController?.onHardwareKeys()
-                if (event.keyCode == KeyCode.DELETE) {
-                    inputLogic.releaseCompositionForHardware()
-                }
+                // Do not releaseCompositionForHardware() here. That marks an external
+                // cursor and reloads the field; OneNote then races paced DELs and drops them.
+                // Through IME deletes shrink the composing word like soft backspace.
                 inputLogic.onCodeInput(
                     settings.current, event,
                     keyboardSwitcher.keyboardCapsMode,

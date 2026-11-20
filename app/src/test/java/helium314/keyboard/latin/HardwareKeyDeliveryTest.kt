@@ -60,7 +60,7 @@ class HardwareKeyDeliveryTest {
     @Test
     fun serializeRoundTripKeepsPace() {
         val list = listOf(
-            HardwareKeyAppOverride("org.mozilla.firefox", HardwareKeyDeliveryMode.IME, HardwareKeyImePace.SETTLE, 15),
+            HardwareKeyAppOverride("org.mozilla.firefox", HardwareKeyDeliveryMode.IME, HardwareKeyImePace.SETTLE, 24),
             HardwareKeyAppOverride("com.microsoft.office.onenote", HardwareKeyDeliveryMode.IME, HardwareKeyImePace.MS, 30),
             HardwareKeyAppOverride("com.microsoft.office.word", HardwareKeyDeliveryMode.PASS_THROUGH),
         )

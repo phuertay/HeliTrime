@@ -33,8 +33,10 @@ enum class HardwareKeyImePace {
 
     companion object {
         @JvmStatic
-        fun fromPref(value: String?): HardwareKeyImePace =
-            if (value.equals("MS", ignoreCase = true)) MS else SETTLE
+        fun fromPref(value: String?): HardwareKeyImePace = when (value?.uppercase()) {
+            "SETTLE" -> SETTLE
+            else -> MS // default and "MS"
+        }
     }
 }
 
@@ -42,8 +44,8 @@ enum class HardwareKeyImePace {
 data class HardwareKeyAppOverride(
     val packageName: String,
     val mode: HardwareKeyDeliveryMode,
-    val pace: HardwareKeyImePace = HardwareKeyImePace.SETTLE,
-    val paceMs: Int = 15,
+    val pace: HardwareKeyImePace = HardwareKeyImePace.MS,
+    val paceMs: Int = 24,
 ) {
     fun toPrefLine(): String = when {
         mode == HardwareKeyDeliveryMode.PASS_THROUGH -> "$packageName=PASS_THROUGH"
@@ -67,9 +69,9 @@ data class HardwareKeyAppOverride(
             if (mode == HardwareKeyDeliveryMode.PASS_THROUGH) {
                 return HardwareKeyAppOverride(pkg, mode)
             }
-            val pace = if (parts.size >= 2) HardwareKeyImePace.fromPref(parts[1]) else HardwareKeyImePace.SETTLE
+            val pace = if (parts.size >= 2) HardwareKeyImePace.fromPref(parts[1]) else HardwareKeyImePace.MS
             val ms = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(0, 100)
-                ?: 15
+                ?: 24
             return HardwareKeyAppOverride(pkg, mode, pace, ms)
         }
 
@@ -118,8 +120,8 @@ class HardwareKeyPaceQueue(
 ) {
     private val queue = ArrayDeque<Event>()
     private var waiting = false
-    private var pace = HardwareKeyImePace.SETTLE
-    private var intervalMs = 15L
+    private var pace = HardwareKeyImePace.MS
+    private var intervalMs = 24L
     private val advanceRunnable = Runnable { advanceAfterWait() }
 
     fun configure(pace: HardwareKeyImePace, intervalMs: Int) {
