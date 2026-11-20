@@ -13,8 +13,8 @@ android {
         applicationId = "helitrime001.keyboard"
         minSdk = 21
         targetSdk = 37
-        versionCode = 4316
-        versionName = "4.3-beta17"
+        versionCode = 4317
+        versionName = "4.3-beta18"
         ndk {
             abiFilters.clear()
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))

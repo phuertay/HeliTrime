@@ -412,6 +412,14 @@ public class SettingsValues {
                 mHardwareKeyDeliveryMode, mHardwareKeyAppDelivery, packageName);
     }
 
+    /** Per-app override including IME pace, or null when the package uses the defaults. */
+    @androidx.annotation.Nullable
+    public helium314.keyboard.latin.HardwareKeyAppOverride hardwareKeyOverrideForPackage(
+            final String packageName) {
+        return helium314.keyboard.latin.HardwareKeyAppOverride.find(
+                mHardwareKeyAppDelivery, packageName);
+    }
+
     public boolean hasSameOrientation(final Configuration configuration) {
         return mDisplayOrientation == configuration.orientation;
     }

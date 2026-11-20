@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import helium314.keyboard.event.Event
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
+import helium314.keyboard.latin.utils.AppsUtils
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.shadows.ShadowLooper
@@ -11,6 +12,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -27,7 +29,7 @@ class HardwareKeyDeliveryTest {
             org.mozilla.firefox=IME
             com.microsoft.office.word=PASS_THROUGH
             # comment
-            com.microsoft.office.onenote=IME
+            com.microsoft.office.onenote=IME|MS|25
         """.trimIndent()
         assertEquals(
             HardwareKeyDeliveryMode.IME,
@@ -41,6 +43,10 @@ class HardwareKeyDeliveryTest {
             HardwareKeyDeliveryMode.PASS_THROUGH,
             HardwareKeyDeliveryMode.forPackage(HardwareKeyDeliveryMode.PASS_THROUGH, overrides, "com.other.app")
         )
+        val oneNote = HardwareKeyAppOverride.find(overrides, "com.microsoft.office.onenote")
+        assertEquals(HardwareKeyDeliveryMode.IME, oneNote!!.mode)
+        assertEquals(HardwareKeyImePace.MS, oneNote.pace)
+        assertEquals(25, oneNote.paceMs)
     }
 
     @Test
@@ -49,6 +55,47 @@ class HardwareKeyDeliveryTest {
         assertEquals(HardwareKeyDeliveryMode.IME, HardwareKeyDeliveryMode.fromPref("IME"))
         assertEquals(HardwareKeyDeliveryMode.IME, HardwareKeyDeliveryMode.fromPref("COALESCE"))
         assertEquals(HardwareKeyDeliveryMode.PASS_THROUGH, HardwareKeyDeliveryMode.fromPref("PASS_THROUGH"))
+    }
+
+    @Test
+    fun serializeRoundTripKeepsPace() {
+        val list = listOf(
+            HardwareKeyAppOverride("org.mozilla.firefox", HardwareKeyDeliveryMode.IME, HardwareKeyImePace.SETTLE, 15),
+            HardwareKeyAppOverride("com.microsoft.office.onenote", HardwareKeyDeliveryMode.IME, HardwareKeyImePace.MS, 30),
+            HardwareKeyAppOverride("com.microsoft.office.word", HardwareKeyDeliveryMode.PASS_THROUGH),
+        )
+        val text = HardwareKeyAppOverride.serialize(list)
+        val parsed = HardwareKeyAppOverride.parseAll(text)
+        assertEquals(list, parsed)
+        assertNull(HardwareKeyAppOverride.find(text, "missing.app"))
+    }
+
+    @Test
+    fun upsertAndRemove() {
+        var text = HardwareKeyAppOverride.upsert(
+            null,
+            HardwareKeyAppOverride("a.b", HardwareKeyDeliveryMode.IME, HardwareKeyImePace.MS, 10)
+        )
+        text = HardwareKeyAppOverride.upsert(
+            text,
+            HardwareKeyAppOverride("a.b", HardwareKeyDeliveryMode.PASS_THROUGH)
+        )
+        assertEquals(HardwareKeyDeliveryMode.PASS_THROUGH, HardwareKeyAppOverride.find(text, "a.b")!!.mode)
+        text = HardwareKeyAppOverride.remove(text, "a.b")
+        assertTrue(text.isEmpty())
+    }
+
+    @Test
+    fun fuzzyFilterMatchesNameAndPackageTokens() {
+        val apps = listOf(
+            Triple("org.mozilla.firefox", "Firefox", null),
+            Triple("com.microsoft.office.onenote", "OneNote", null),
+            Triple("com.microsoft.office.word", "Word", null),
+        )
+        assertEquals(listOf(apps[0]), AppsUtils.fuzzyFilterApps(apps, "fire"))
+        assertEquals(listOf(apps[1]), AppsUtils.fuzzyFilterApps(apps, "one note"))
+        assertEquals(listOf(apps[1], apps[2]), AppsUtils.fuzzyFilterApps(apps, "microsoft office"))
+        assertEquals(apps, AppsUtils.fuzzyFilterApps(apps, "  "))
     }
 
     @Test

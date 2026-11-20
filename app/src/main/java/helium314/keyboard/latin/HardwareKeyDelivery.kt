@@ -17,22 +17,12 @@ enum class HardwareKeyDeliveryMode {
         }
 
         /**
-         * Lines of `package.name=PASS_THROUGH` or `package.name=IME`.
+         * Lines of `package.name=PASS_THROUGH` or `package.name=IME` (optional `|SETTLE` / `|MS|15`).
          * Unknown packages fall back to [defaultMode].
          */
         @JvmStatic
         fun forPackage(defaultMode: HardwareKeyDeliveryMode, overrides: String?, packageName: String?): HardwareKeyDeliveryMode {
-            if (packageName.isNullOrEmpty() || overrides.isNullOrBlank()) return defaultMode
-            for (raw in overrides.lineSequence()) {
-                val line = raw.trim()
-                if (line.isEmpty() || line.startsWith("#")) continue
-                val eq = line.indexOf('=')
-                if (eq <= 0) continue
-                val pkg = line.substring(0, eq).trim()
-                if (!pkg.equals(packageName, ignoreCase = true)) continue
-                return fromPref(line.substring(eq + 1).trim())
-            }
-            return defaultMode
+            return HardwareKeyAppOverride.find(overrides, packageName)?.mode ?: defaultMode
         }
     }
 }
@@ -45,6 +35,75 @@ enum class HardwareKeyImePace {
         @JvmStatic
         fun fromPref(value: String?): HardwareKeyImePace =
             if (value.equals("MS", ignoreCase = true)) MS else SETTLE
+    }
+}
+
+/** One package's hardware-delivery override, including IME pace when mode is [HardwareKeyDeliveryMode.IME]. */
+data class HardwareKeyAppOverride(
+    val packageName: String,
+    val mode: HardwareKeyDeliveryMode,
+    val pace: HardwareKeyImePace = HardwareKeyImePace.SETTLE,
+    val paceMs: Int = 15,
+) {
+    fun toPrefLine(): String = when {
+        mode == HardwareKeyDeliveryMode.PASS_THROUGH -> "$packageName=PASS_THROUGH"
+        pace == HardwareKeyImePace.MS -> "$packageName=IME|MS|$paceMs"
+        else -> "$packageName=IME|SETTLE"
+    }
+
+    companion object {
+        @JvmStatic
+        fun parseLine(raw: String): HardwareKeyAppOverride? {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) return null
+            val eq = line.indexOf('=')
+            if (eq <= 0) return null
+            val pkg = line.substring(0, eq).trim()
+            if (pkg.isEmpty()) return null
+            val rest = line.substring(eq + 1).trim()
+            val parts = rest.split('|').map { it.trim() }.filter { it.isNotEmpty() }
+            if (parts.isEmpty()) return null
+            val mode = HardwareKeyDeliveryMode.fromPref(parts[0])
+            if (mode == HardwareKeyDeliveryMode.PASS_THROUGH) {
+                return HardwareKeyAppOverride(pkg, mode)
+            }
+            val pace = if (parts.size >= 2) HardwareKeyImePace.fromPref(parts[1]) else HardwareKeyImePace.SETTLE
+            val ms = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(0, 100)
+                ?: 15
+            return HardwareKeyAppOverride(pkg, mode, pace, ms)
+        }
+
+        @JvmStatic
+        fun parseAll(overrides: String?): List<HardwareKeyAppOverride> {
+            if (overrides.isNullOrBlank()) return emptyList()
+            val seen = linkedMapOf<String, HardwareKeyAppOverride>()
+            for (raw in overrides.lineSequence()) {
+                val item = parseLine(raw) ?: continue
+                seen[item.packageName.lowercase()] = item
+            }
+            return seen.values.toList()
+        }
+
+        @JvmStatic
+        fun serialize(overrides: List<HardwareKeyAppOverride>): String =
+            overrides.joinToString("\n") { it.toPrefLine() }
+
+        @JvmStatic
+        fun find(overrides: String?, packageName: String?): HardwareKeyAppOverride? {
+            if (packageName.isNullOrEmpty() || overrides.isNullOrBlank()) return null
+            return parseAll(overrides).firstOrNull { it.packageName.equals(packageName, ignoreCase = true) }
+        }
+
+        fun upsert(overrides: String?, item: HardwareKeyAppOverride): String {
+            val map = parseAll(overrides).associateByTo(linkedMapOf()) { it.packageName.lowercase() }
+            map[item.packageName.lowercase()] = item
+            return serialize(map.values.toList())
+        }
+
+        fun remove(overrides: String?, packageName: String): String {
+            val kept = parseAll(overrides).filterNot { it.packageName.equals(packageName, ignoreCase = true) }
+            return serialize(kept)
+        }
     }
 }
 

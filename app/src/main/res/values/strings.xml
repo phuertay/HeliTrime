@@ -627,8 +627,22 @@ language, hence "No language". -->
     <string name="prefs_hardware_key_ime_pace_ms">IME pace interval</string>
     <!-- Title of per-app hardware delivery overrides -->
     <string name="prefs_hardware_key_app_delivery">Per-app hardware delivery</string>
-    <!-- Description / format for per-app overrides -->
-    <string name="prefs_hardware_key_app_delivery_summary">One package per line: package.name=PASS_THROUGH or package.name=IME. Overrides the default above.</string>
+    <!-- Description of the per-app hardware delivery UI -->
+    <string name="prefs_hardware_key_app_delivery_summary">Override the default for specific apps. Pick an app, then set delivery and IME pace.</string>
+    <!-- Button: configure the app that last used this keyboard -->
+    <string name="prefs_hardware_key_app_current">Current app</string>
+    <!-- Button: open the installed-app picker -->
+    <string name="prefs_hardware_key_app_pick">Pick app</string>
+    <!-- Title of the installed-app picker dialog -->
+    <string name="prefs_hardware_key_app_pick_title">Choose an app</string>
+    <!-- Shown when no editor has used the IME yet -->
+    <string name="prefs_hardware_key_app_current_empty">Open a text field in an app first, then tap Current app.</string>
+    <!-- Hint under the current-app button; %s is the app label -->
+    <string name="prefs_hardware_key_app_current_hint">Last used: %s</string>
+    <!-- Summary for an IME override that waits for settle -->
+    <string name="prefs_hardware_key_app_summary_ime_settle">Through IME · wait for settle</string>
+    <!-- Summary for an IME override with a fixed interval; %d is milliseconds -->
+    <string name="prefs_hardware_key_app_summary_ime_ms">Through IME · %d ms</string>
     <!-- Title of the button to revert to the default value of the device in the settings dialog. Preferably 10 characters or less. -->
     <string name="button_default">Default</string>
     <!-- Title of the setup wizard welcome screen. %s is the application name. -->

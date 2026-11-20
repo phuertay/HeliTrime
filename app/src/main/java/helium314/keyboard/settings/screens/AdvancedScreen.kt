@@ -43,6 +43,7 @@ import helium314.keyboard.latin.utils.Theme
 import helium314.keyboard.settings.dialogs.TextInputDialog
 import helium314.keyboard.settings.preferences.BackupRestorePreference
 import helium314.keyboard.settings.preferences.LoadGestureLibPreference
+import helium314.keyboard.settings.preferences.HardwareKeyAppDeliveryPreference
 import helium314.keyboard.settings.preferences.TextInputPreference
 import helium314.keyboard.latin.utils.previewDark
 import androidx.core.content.edit
@@ -316,8 +317,7 @@ fun createAdvancedSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_HARDWARE_KEY_APP_DELIVERY,
         R.string.prefs_hardware_key_app_delivery, R.string.prefs_hardware_key_app_delivery_summary) {
-        TextInputPreference(it, Defaults.PREF_HARDWARE_KEY_APP_DELIVERY,
-            stringResource(R.string.prefs_hardware_key_app_delivery_summary))
+        HardwareKeyAppDeliveryPreference(it)
     },
     Setting(context, SettingsWithoutKey.LOAD_GESTURE_LIB, R.string.load_gesture_library, R.string.load_gesture_library_summary) {
         LoadGestureLibPreference(it)

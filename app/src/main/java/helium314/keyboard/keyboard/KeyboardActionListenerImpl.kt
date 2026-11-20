@@ -111,9 +111,11 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             return false
 
         val pkg = latinIME.currentInputEditorInfo?.packageName
+        val sv = settings.current
+        val override = sv.hardwareKeyOverrideForPackage(pkg)
         // Hangul needs the IME combiner; pass-through would break syllables.
-        val mode = if (settings.current.mLocale.language == "ko") HardwareKeyDeliveryMode.IME
-            else settings.current.hardwareKeyDeliveryForPackage(pkg)
+        val mode = if (sv.mLocale.language == "ko") HardwareKeyDeliveryMode.IME
+            else (override?.mode ?: sv.mHardwareKeyDeliveryMode)
 
         if (mode == HardwareKeyDeliveryMode.PASS_THROUGH) {
             latinIME.pinyinController?.onHardwareKeys()
@@ -123,7 +125,7 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         }
 
         val event: Event
-        if (settings.current.mLocale.language == "ko") { // todo: this does not appear to be the right place
+        if (sv.mLocale.language == "ko") { // todo: this does not appear to be the right place
             val subtype = keyboardSwitcher.keyboard?.mId?.subtype ?: RichInputMethodManager.getInstance().currentSubtype
             event = HangulEventDecoder.decodeHardwareKeyEvent(subtype, keyEvent) {
                 getHardwareKeyEventDecoder(keyEvent.deviceId).decodeHardwareKey(keyEvent)
@@ -138,15 +140,16 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         if (event.metaState and SHORTCUT_META != 0) {
             hardwareKeyPace.clear()
             inputLogic.onCodeInput(
-                settings.current, event,
+                sv, event,
                 keyboardSwitcher.keyboardCapsMode,
                 latinIME.mHandler
             )
             return true
         }
 
-        val sv = settings.current
-        hardwareKeyPace.configure(sv.mHardwareKeyImePace, sv.mHardwareKeyImePaceMs)
+        val pace = override?.pace ?: sv.mHardwareKeyImePace
+        val paceMs = override?.paceMs ?: sv.mHardwareKeyImePaceMs
+        hardwareKeyPace.configure(pace, paceMs)
         hardwareKeyPace.enqueue(event)
         return true
     }

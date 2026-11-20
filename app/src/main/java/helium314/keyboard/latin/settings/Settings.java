@@ -139,6 +139,8 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_HARDWARE_KEY_IME_PACE = "hardware_key_ime_pace";
     public static final String PREF_HARDWARE_KEY_IME_PACE_MS = "hardware_key_ime_pace_ms";
     public static final String PREF_HARDWARE_KEY_APP_DELIVERY = "hardware_key_app_delivery";
+    /** Last editor package seen by the IME; used by the hardware delivery "current app" button. */
+    public static final String PREF_LAST_EDITOR_PACKAGE = "last_editor_package";
     public static final String PREF_GESTURE_PREVIEW_TRAIL = "gesture_preview_trail";
     public static final String PREF_GESTURE_FLOATING_PREVIEW_TEXT = "gesture_floating_preview_text";
     public static final String PREF_GESTURE_FLOATING_PREVIEW_DYNAMIC = "gesture_floating_preview_dynamic";
@@ -229,7 +231,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     private static boolean reloadOnChanged(String key) {
         return switch (key) {
             case PREF_LAST_SHOWN_EMOJI_CATEGORY_PAGE_ID, PREF_LAST_SHOWN_EMOJI_CATEGORY_ID, PREF_RECENT_EMOJIS,
-                 PREF_DONT_SHOW_MISSING_DICTIONARY_DIALOG, PREF_SELECTED_SUBTYPE -> false;
+                 PREF_DONT_SHOW_MISSING_DICTIONARY_DIALOG, PREF_SELECTED_SUBTYPE, PREF_LAST_EDITOR_PACKAGE -> false;
             default -> !key.startsWith(PREF_SAVED_APP_SUBTYPE_PREFIX) && !key.startsWith("floating_pos");
         };
     }
@@ -588,6 +590,12 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
             mPrefs.edit().putString(PREF_SAVED_APP_SUBTYPE_PREFIX + packageName,
                                     SettingsSubtype.Companion.toSettingsSubtype(subtype.getRawSubtype()).toPref()).apply();
         }
+    }
+
+    /** Remembers the last editor package for the hardware delivery "current app" button. */
+    public void writeLastEditorPackage(@Nullable final String packageName) {
+        if (StringUtils.isEmpty(packageName)) return;
+        mPrefs.edit().putString(PREF_LAST_EDITOR_PACKAGE, packageName).apply();
     }
 
     public RichInputMethodSubtype getSubtypeForApp(String packageName) {
