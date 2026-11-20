@@ -91,20 +91,13 @@ fun AdvancedSettingsScreen(
         Settings.PREF_ENABLE_HARDWARE_KEYBOARD,
         if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD))
             Settings.PREF_HARDWARE_KEY_DELIVERY else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD))
+            Settings.PREF_HARDWARE_KEY_IME_PACE else null,
         if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD)
-            && prefs.getString(Settings.PREF_HARDWARE_KEY_DELIVERY, Defaults.PREF_HARDWARE_KEY_DELIVERY) == "COALESCE")
-            Settings.PREF_HARDWARE_KEY_COALESCE_MS else null,
-        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD)
-            && prefs.getString(Settings.PREF_HARDWARE_KEY_DELIVERY, Defaults.PREF_HARDWARE_KEY_DELIVERY) == "DOSE")
-            Settings.PREF_HARDWARE_KEY_DOSE_MS else null,
-        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD)
-            && prefs.getString(Settings.PREF_HARDWARE_KEY_DELIVERY, Defaults.PREF_HARDWARE_KEY_DELIVERY).let {
-                it == "COALESCE" || it == "DOSE"
-            })
-            Settings.PREF_HARDWARE_KEY_BATCH_EDIT else null,
-        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD)
-            && prefs.getString(Settings.PREF_HARDWARE_KEY_DELIVERY, Defaults.PREF_HARDWARE_KEY_DELIVERY) == "IME")
-            Settings.PREF_HARDWARE_KEY_QUIET_BURST else null,
+            && prefs.getString(Settings.PREF_HARDWARE_KEY_IME_PACE, Defaults.PREF_HARDWARE_KEY_IME_PACE) == "MS")
+            Settings.PREF_HARDWARE_KEY_IME_PACE_MS else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD))
+            Settings.PREF_HARDWARE_KEY_APP_DELIVERY else null,
         if (BuildConfig.BUILD_TYPE != "nouserlib") SettingsWithoutKey.LOAD_GESTURE_LIB else null
     )
     SearchSettingsScreen(
@@ -300,38 +293,31 @@ fun createAdvancedSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_HARDWARE_KEY_DELIVERY, R.string.prefs_hardware_key_delivery) {
         val items = listOf(
-            stringResource(R.string.prefs_hardware_key_delivery_ime) to "IME",
             stringResource(R.string.prefs_hardware_key_delivery_pass_through) to "PASS_THROUGH",
-            stringResource(R.string.prefs_hardware_key_delivery_coalesce) to "COALESCE",
-            stringResource(R.string.prefs_hardware_key_delivery_dose) to "DOSE",
+            stringResource(R.string.prefs_hardware_key_delivery_ime) to "IME",
         )
         ListPreference(it, items, Defaults.PREF_HARDWARE_KEY_DELIVERY)
     },
-    Setting(context, Settings.PREF_HARDWARE_KEY_COALESCE_MS, R.string.prefs_hardware_key_coalesce_ms) { setting ->
-        SliderPreference(
-            name = setting.title,
-            key = setting.key,
-            default = Defaults.PREF_HARDWARE_KEY_COALESCE_MS,
-            range = 0f..200f,
-            description = { stringResource(R.string.abbreviation_unit_milliseconds, it.toString()) }
+    Setting(context, Settings.PREF_HARDWARE_KEY_IME_PACE, R.string.prefs_hardware_key_ime_pace) {
+        val items = listOf(
+            stringResource(R.string.prefs_hardware_key_ime_pace_settle) to "SETTLE",
+            stringResource(R.string.prefs_hardware_key_ime_pace_ms_mode) to "MS",
         )
+        ListPreference(it, items, Defaults.PREF_HARDWARE_KEY_IME_PACE)
     },
-    Setting(context, Settings.PREF_HARDWARE_KEY_DOSE_MS, R.string.prefs_hardware_key_dose_ms) { setting ->
+    Setting(context, Settings.PREF_HARDWARE_KEY_IME_PACE_MS, R.string.prefs_hardware_key_ime_pace_ms) { setting ->
         SliderPreference(
             name = setting.title,
             key = setting.key,
-            default = Defaults.PREF_HARDWARE_KEY_DOSE_MS,
+            default = Defaults.PREF_HARDWARE_KEY_IME_PACE_MS,
             range = 0f..100f,
             description = { stringResource(R.string.abbreviation_unit_milliseconds, it.toString()) }
         )
     },
-    Setting(context, Settings.PREF_HARDWARE_KEY_BATCH_EDIT,
-        R.string.prefs_hardware_key_batch_edit, R.string.prefs_hardware_key_batch_edit_summary) {
-        SwitchPreference(it, Defaults.PREF_HARDWARE_KEY_BATCH_EDIT)
-    },
-    Setting(context, Settings.PREF_HARDWARE_KEY_QUIET_BURST,
-        R.string.prefs_hardware_key_quiet_burst, R.string.prefs_hardware_key_quiet_burst_summary) {
-        SwitchPreference(it, Defaults.PREF_HARDWARE_KEY_QUIET_BURST)
+    Setting(context, Settings.PREF_HARDWARE_KEY_APP_DELIVERY,
+        R.string.prefs_hardware_key_app_delivery, R.string.prefs_hardware_key_app_delivery_summary) {
+        TextInputPreference(it, Defaults.PREF_HARDWARE_KEY_APP_DELIVERY,
+            stringResource(R.string.prefs_hardware_key_app_delivery_summary))
     },
     Setting(context, SettingsWithoutKey.LOAD_GESTURE_LIB, R.string.load_gesture_library, R.string.load_gesture_library_summary) {
         LoadGestureLibPreference(it)

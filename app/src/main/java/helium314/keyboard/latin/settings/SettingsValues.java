@@ -119,10 +119,9 @@ public class SettingsValues {
     public final boolean mEnableEmojiAltPhysicalKey;
     public final boolean mEnableHardwareKeyboard;
     public final helium314.keyboard.latin.HardwareKeyDeliveryMode mHardwareKeyDeliveryMode;
-    public final int mHardwareKeyCoalesceMs;
-    public final int mHardwareKeyDoseMs;
-    public final boolean mHardwareKeyBatchEdit;
-    public final boolean mHardwareKeyQuietBurst;
+    public final helium314.keyboard.latin.HardwareKeyImePace mHardwareKeyImePace;
+    public final int mHardwareKeyImePaceMs;
+    public final String mHardwareKeyAppDelivery;
     public final boolean mIsSplitKeyboardEnabled;
     public final float mSplitKeyboardSpacerRelativeWidth;
     public final boolean mQuickPinToolbarKeys;
@@ -269,10 +268,10 @@ public class SettingsValues {
         mEnableHardwareKeyboard = prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD);
         mHardwareKeyDeliveryMode = helium314.keyboard.latin.HardwareKeyDeliveryMode.fromPref(
                 prefs.getString(Settings.PREF_HARDWARE_KEY_DELIVERY, Defaults.PREF_HARDWARE_KEY_DELIVERY));
-        mHardwareKeyCoalesceMs = prefs.getInt(Settings.PREF_HARDWARE_KEY_COALESCE_MS, Defaults.PREF_HARDWARE_KEY_COALESCE_MS);
-        mHardwareKeyDoseMs = prefs.getInt(Settings.PREF_HARDWARE_KEY_DOSE_MS, Defaults.PREF_HARDWARE_KEY_DOSE_MS);
-        mHardwareKeyBatchEdit = prefs.getBoolean(Settings.PREF_HARDWARE_KEY_BATCH_EDIT, Defaults.PREF_HARDWARE_KEY_BATCH_EDIT);
-        mHardwareKeyQuietBurst = prefs.getBoolean(Settings.PREF_HARDWARE_KEY_QUIET_BURST, Defaults.PREF_HARDWARE_KEY_QUIET_BURST);
+        mHardwareKeyImePace = helium314.keyboard.latin.HardwareKeyImePace.fromPref(
+                prefs.getString(Settings.PREF_HARDWARE_KEY_IME_PACE, Defaults.PREF_HARDWARE_KEY_IME_PACE));
+        mHardwareKeyImePaceMs = prefs.getInt(Settings.PREF_HARDWARE_KEY_IME_PACE_MS, Defaults.PREF_HARDWARE_KEY_IME_PACE_MS);
+        mHardwareKeyAppDelivery = prefs.getString(Settings.PREF_HARDWARE_KEY_APP_DELIVERY, Defaults.PREF_HARDWARE_KEY_APP_DELIVERY);
         mGestureInputEnabled = JniUtils.sHaveGestureLib && prefs.getBoolean(Settings.PREF_GESTURE_INPUT, Defaults.PREF_GESTURE_INPUT);
         mGestureTrailEnabled = prefs.getBoolean(Settings.PREF_GESTURE_PREVIEW_TRAIL, Defaults.PREF_GESTURE_PREVIEW_TRAIL);
         mGestureFloatingPreviewTextEnabled = !mInputAttributes.mDisableGestureFloatingPreviewText
@@ -404,6 +403,13 @@ public class SettingsValues {
 
     public boolean isSameInputType(final EditorInfo editorInfo) {
         return mInputAttributes.isSameInputType(editorInfo);
+    }
+
+    /** Default hardware delivery, overridden per package when listed. */
+    public helium314.keyboard.latin.HardwareKeyDeliveryMode hardwareKeyDeliveryForPackage(
+            final String packageName) {
+        return helium314.keyboard.latin.HardwareKeyDeliveryMode.forPackage(
+                mHardwareKeyDeliveryMode, mHardwareKeyAppDelivery, packageName);
     }
 
     public boolean hasSameOrientation(final Configuration configuration) {

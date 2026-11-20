@@ -1,145 +1,132 @@
 package helium314.keyboard.latin
 
 import android.os.Handler
-import helium314.keyboard.latin.common.StringUtils
+import helium314.keyboard.event.Event
+import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
+import java.util.ArrayDeque
 
 enum class HardwareKeyDeliveryMode {
-    IME,          // existing InputLogic path
-    PASS_THROUGH, // app gets KeyEvents
-    COALESCE,     // buffer until idle, then one commitText
-    DOSE;         // pace one code point at a time
+    PASS_THROUGH,
+    IME;
 
     companion object {
         @JvmStatic
-        fun fromPref(value: String?): HardwareKeyDeliveryMode =
-            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: IME
+        fun fromPref(value: String?): HardwareKeyDeliveryMode = when (value?.uppercase()) {
+            "IME", "COALESCE", "DOSE" -> IME // old prefs
+            else -> PASS_THROUGH
+        }
+
+        /**
+         * Lines of `package.name=PASS_THROUGH` or `package.name=IME`.
+         * Unknown packages fall back to [defaultMode].
+         */
+        @JvmStatic
+        fun forPackage(defaultMode: HardwareKeyDeliveryMode, overrides: String?, packageName: String?): HardwareKeyDeliveryMode {
+            if (packageName.isNullOrEmpty() || overrides.isNullOrBlank()) return defaultMode
+            for (raw in overrides.lineSequence()) {
+                val line = raw.trim()
+                if (line.isEmpty() || line.startsWith("#")) continue
+                val eq = line.indexOf('=')
+                if (eq <= 0) continue
+                val pkg = line.substring(0, eq).trim()
+                if (!pkg.equals(packageName, ignoreCase = true)) continue
+                return fromPref(line.substring(eq + 1).trim())
+            }
+            return defaultMode
+        }
+    }
+}
+
+enum class HardwareKeyImePace {
+    SETTLE,
+    MS;
+
+    companion object {
+        @JvmStatic
+        fun fromPref(value: String?): HardwareKeyImePace =
+            if (value.equals("MS", ignoreCase = true)) MS else SETTLE
     }
 }
 
 /**
- * Queues hardware characters and flushes them to the editor.
- * Coalesce: idle timeout then one commit.
- * Dose: one code point every intervalMs.
+ * Feeds hardware [Event]s into the IME one at a time.
+ * Backspaces that still sit in the queue shrink the queue instead of deleting in the app.
  */
-class HardwareKeyDelivery(
+class HardwareKeyPaceQueue(
     private val handler: Handler,
-    private val commitText: (String) -> Unit,
-    private val deleteOne: () -> Unit,
-    private val sendEnter: () -> Unit,
+    private val dispatch: (Event) -> Unit,
 ) {
-    private val buffer = StringBuilder()
-    private val flushRunnable = Runnable { flush() }
-    private val doseRunnable = Runnable { doseOne() }
-    @Volatile private var batchEdit = false
-    private var beginBatch: (() -> Unit)? = null
-    private var endBatch: (() -> Unit)? = null
-    private var doseScheduled = false
-    private var lastDoseMs = 15L
+    private val queue = ArrayDeque<Event>()
+    private var waiting = false
+    private var pace = HardwareKeyImePace.SETTLE
+    private var intervalMs = 15L
+    private val advanceRunnable = Runnable { advanceAfterWait() }
 
-    fun setBatchEditHooks(begin: () -> Unit, end: () -> Unit) {
-        beginBatch = begin
-        endBatch = end
+    fun configure(pace: HardwareKeyImePace, intervalMs: Int) {
+        this.pace = pace
+        this.intervalMs = intervalMs.toLong().coerceAtLeast(0L)
     }
 
     fun clear() {
-        handler.removeCallbacks(flushRunnable)
-        handler.removeCallbacks(doseRunnable)
-        doseScheduled = false
-        buffer.setLength(0)
+        handler.removeCallbacks(advanceRunnable)
+        queue.clear()
+        waiting = false
     }
 
-    /** Append a printing code point (or space). Schedules flush per mode. */
-    fun onCodePoint(codePoint: Int, mode: HardwareKeyDeliveryMode, coalesceMs: Int, doseMs: Int, useBatchEdit: Boolean) {
-        batchEdit = useBatchEdit
-        when (mode) {
-            HardwareKeyDeliveryMode.COALESCE -> {
-                buffer.appendCodePoint(codePoint)
-                handler.removeCallbacks(flushRunnable)
-                handler.postDelayed(flushRunnable, coalesceMs.toLong().coerceAtLeast(0L))
-            }
-            HardwareKeyDeliveryMode.DOSE -> {
-                lastDoseMs = doseMs.toLong().coerceAtLeast(0L)
-                buffer.appendCodePoint(codePoint)
-                if (!doseScheduled) {
-                    doseScheduled = true
-                    handler.postDelayed(doseRunnable, lastDoseMs)
-                }
-            }
-            else -> {
-                // caller should not use this for IME/pass-through
-                commitNow(StringUtils.newSingleCodePointString(codePoint))
-            }
-        }
+    fun isActive(): Boolean = waiting || queue.isNotEmpty()
+
+    fun enqueue(event: Event) {
+        if (isDelete(event) && absorbDelete()) return
+        queue.addLast(event)
+        if (!waiting) releaseNext()
     }
 
-    /** Backspace: drop last buffered code point if any, else deleteOne after flush. */
-    fun onDelete(mode: HardwareKeyDeliveryMode, coalesceMs: Int, doseMs: Int, useBatchEdit: Boolean) {
-        batchEdit = useBatchEdit
-        if (buffer.isNotEmpty()) {
-            val last = buffer.offsetByCodePoints(buffer.length, -1)
-            buffer.setLength(last)
-            when (mode) {
-                HardwareKeyDeliveryMode.COALESCE -> {
-                    handler.removeCallbacks(flushRunnable)
-                    if (buffer.isNotEmpty()) handler.postDelayed(flushRunnable, coalesceMs.toLong().coerceAtLeast(0L))
-                }
-                HardwareKeyDeliveryMode.DOSE -> {
-                    lastDoseMs = doseMs.toLong().coerceAtLeast(0L)
-                    if (buffer.isNotEmpty() && !doseScheduled) {
-                        doseScheduled = true
-                        handler.postDelayed(doseRunnable, lastDoseMs)
-                    }
-                }
-                else -> {}
-            }
+    /** Selection echo from the last dispatched edit. SETTLE mode releases the next event. */
+    fun onSelectionSettled() {
+        if (pace != HardwareKeyImePace.SETTLE || !waiting) return
+        handler.removeCallbacks(advanceRunnable)
+        waiting = false
+        releaseNext()
+    }
+
+    private fun absorbDelete(): Boolean {
+        val last = queue.lastOrNull() ?: return false
+        if (!isAbsorbable(last)) return false
+        queue.removeLast()
+        return true
+    }
+
+    private fun releaseNext() {
+        val event = queue.pollFirst()
+        if (event == null) {
+            waiting = false
             return
         }
-        // nothing buffered: flush timers and delete in the editor
-        handler.removeCallbacks(flushRunnable)
-        handler.removeCallbacks(doseRunnable)
-        doseScheduled = false
-        deleteOne()
-    }
-
-    /** Enter: flush buffer first, then sendEnter. */
-    fun onEnter(useBatchEdit: Boolean) {
-        batchEdit = useBatchEdit
-        flush()
-        sendEnter()
-    }
-
-    fun flush() {
-        handler.removeCallbacks(flushRunnable)
-        handler.removeCallbacks(doseRunnable)
-        doseScheduled = false
-        if (buffer.isEmpty()) return
-        val text = buffer.toString()
-        buffer.setLength(0)
-        commitNow(text)
-    }
-
-    private fun doseOne() {
-        doseScheduled = false
-        if (buffer.isEmpty()) return
-        val firstEnd = buffer.offsetByCodePoints(0, 1)
-        val piece = buffer.substring(0, firstEnd)
-        buffer.delete(0, firstEnd)
-        commitNow(piece)
-        if (buffer.isNotEmpty()) {
-            doseScheduled = true
-            handler.postDelayed(doseRunnable, lastDoseMs)
+        waiting = true
+        when (pace) {
+            HardwareKeyImePace.MS -> {
+                dispatch(event)
+                // Always wait the interval so a following enqueue is paced, then
+                // advanceAfterWait clears waiting when the queue is empty.
+                handler.postDelayed(advanceRunnable, intervalMs)
+            }
+            HardwareKeyImePace.SETTLE -> {
+                dispatch(event)
+                // Fallback if the editor never echoes selection.
+                val fallback = intervalMs.coerceAtLeast(40L)
+                handler.postDelayed(advanceRunnable, fallback)
+            }
         }
     }
 
-    private fun commitNow(text: String) {
-        if (text.isEmpty()) return
-        val begin = beginBatch
-        val end = endBatch
-        if (batchEdit && begin != null && end != null) {
-            begin()
-            try { commitText(text) } finally { end() }
-        } else {
-            commitText(text)
-        }
+    private fun advanceAfterWait() {
+        waiting = false
+        if (queue.isEmpty()) return
+        releaseNext()
     }
+
+    private fun isDelete(event: Event) = event.keyCode == KeyCode.DELETE
+
+    private fun isAbsorbable(event: Event): Boolean =
+        event.keyCode == KeyCode.DELETE || event.codePoint > 0
 }
