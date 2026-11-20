@@ -160,4 +160,23 @@ class HardwareKeyDeliveryTest {
         assertEquals(listOf("a", "DEL"), dispatched)
     }
 
+    @Test
+    fun backspacesDoNotAbsorbEachOther() {
+        val dispatched = mutableListOf<String>()
+        val q = HardwareKeyPaceQueue(Handler(Looper.getMainLooper())) { e ->
+            dispatched += if (e.keyCode == KeyCode.DELETE) "DEL" else e.codePoint.toChar().toString()
+        }
+        q.configure(HardwareKeyImePace.MS, 10)
+        q.enqueue(letter('a'.code))
+        // 'a' already out; three deletes must all reach the editor (steno correction).
+        q.enqueue(delete())
+        q.enqueue(delete())
+        q.enqueue(delete())
+        ShadowLooper.idleMainLooper(10, TimeUnit.MILLISECONDS)
+        ShadowLooper.idleMainLooper(10, TimeUnit.MILLISECONDS)
+        ShadowLooper.idleMainLooper(10, TimeUnit.MILLISECONDS)
+        ShadowLooper.idleMainLooper(10, TimeUnit.MILLISECONDS)
+        assertEquals(listOf("a", "DEL", "DEL", "DEL"), dispatched)
+    }
+
 }

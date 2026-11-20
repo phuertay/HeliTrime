@@ -109,7 +109,8 @@ data class HardwareKeyAppOverride(
 
 /**
  * Feeds hardware [Event]s into the IME one at a time.
- * Backspaces that still sit in the queue shrink the queue instead of deleting in the app.
+ * A backspace only cancels an unflushed letter still sitting in the queue; it never
+ * cancels another backspace, and never undoes a key that already dispatched.
  */
 class HardwareKeyPaceQueue(
     private val handler: Handler,
@@ -135,7 +136,7 @@ class HardwareKeyPaceQueue(
     fun isActive(): Boolean = waiting || queue.isNotEmpty()
 
     fun enqueue(event: Event) {
-        if (isDelete(event) && absorbDelete()) return
+        if (isDelete(event) && absorbUnflushedLetter()) return
         queue.addLast(event)
         if (!waiting) releaseNext()
     }
@@ -148,9 +149,10 @@ class HardwareKeyPaceQueue(
         releaseNext()
     }
 
-    private fun absorbDelete(): Boolean {
+    /** Drop one pending letter/code point. Do not absorb DELETE (steno sends runs of them). */
+    private fun absorbUnflushedLetter(): Boolean {
         val last = queue.lastOrNull() ?: return false
-        if (!isAbsorbable(last)) return false
+        if (last.codePoint <= 0) return false
         queue.removeLast()
         return true
     }
@@ -185,7 +187,4 @@ class HardwareKeyPaceQueue(
     }
 
     private fun isDelete(event: Event) = event.keyCode == KeyCode.DELETE
-
-    private fun isAbsorbable(event: Event): Boolean =
-        event.keyCode == KeyCode.DELETE || event.codePoint > 0
 }
