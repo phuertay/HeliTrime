@@ -6,6 +6,7 @@
 
 package helium314.keyboard.event
 
+import android.view.KeyEvent
 import helium314.keyboard.latin.common.Constants
 import helium314.keyboard.latin.common.StringUtils
 import helium314.keyboard.latin.suggestions.SuggestedWordInfo
@@ -64,8 +65,13 @@ class Event private constructor(
 
     // Returns whether this is a function key like backspace, ctrl, settings... as opposed to keys
     // that result in input like letters or space.
+    // Shift/Caps only pick the character (e.g. hardware "?" is Shift+/); they must not divert a
+    // printable key into sendKeyEvent while neighbors use commitText — that mix scrambles editors.
     val isFunctionalKeyEvent: Boolean
-        get() = NOT_A_CODE_POINT == codePoint || metaState != 0 // This logic may need to be refined in the future
+        get() {
+            if (NOT_A_CODE_POINT == codePoint) return true
+            return metaState and SHORTCUT_META != 0
+        }
 
     // Returns whether this event is for a dead character. @see {@link #FLAG_DEAD}
     val isDead: Boolean get() = 0 != FLAG_DEAD and flags
@@ -128,6 +134,10 @@ class Event private constructor(
         const val NOT_A_CODE_POINT = -1
         // -1 is a valid key code, so we use 0 here.
         const val NOT_A_KEY_CODE = 0
+
+        /** Ctrl/Alt/Meta (not Shift/Caps) — same idea as hardware shortcut pass-through. */
+        private const val SHORTCUT_META =
+            KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK or KeyEvent.META_META_MASK
 
         private const val FLAG_NONE = 0
         // This event is a dead character, usually input by a dead key. Examples include dead-acute or dead-abovering.
