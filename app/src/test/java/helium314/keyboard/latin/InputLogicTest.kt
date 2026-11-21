@@ -100,6 +100,51 @@ class InputLogicTest {
         assertEquals("there", composingText)
     }
 
+    @Test fun `delete word key removes word`() {
+        setText("hello there")
+        functionalKeyPress(KeyCode.DELETE_WORD)
+        assertEquals("hello ", text)
+    }
+
+    @Test fun `hardware letters do not underline`() {
+        latinIME.onEvent(Event.createHardwareKeypressEvent('h'.code, 'h'.code, 0, null, false))
+        handleMessages()
+        latinIME.onEvent(Event.createHardwareKeypressEvent('i'.code, 'i'.code, 0, null, false))
+        handleMessages()
+        checkConnectionConsistency()
+        assertEquals("hi", text)
+        assertEquals("", composingText)
+
+        latinIME.onEvent(
+            Event.createHardwareKeypressEvent(
+                Event.NOT_A_CODE_POINT, KeyCode.DELETE, 0, null, false
+            )
+        )
+        handleMessages()
+        checkConnectionConsistency()
+        assertEquals("h", text)
+        assertEquals("", composingText)
+    }
+
+    @Test fun `hardware question then capital stays in order`() {
+        // Shift+? and Shift+I used to be treated as functional (metaState != 0) and went
+        // through sendKeyEvent while neighbors used commitText — order scrambled in editors.
+        fun hw(codePoint: Int, keyCode: Int, meta: Int = 0) {
+            latinIME.onEvent(
+                Event.createHardwareKeypressEvent(codePoint, keyCode, meta, null, false)
+            )
+            handleMessages()
+        }
+        "isn't".forEach { hw(it.code, it.code) }
+        hw('?'.code, android.view.KeyEvent.KEYCODE_SLASH, android.view.KeyEvent.META_SHIFT_ON)
+        hw(' '.code, android.view.KeyEvent.KEYCODE_SPACE)
+        hw('I'.code, android.view.KeyEvent.KEYCODE_I, android.view.KeyEvent.META_SHIFT_ON)
+        "sn't".forEach { hw(it.code, it.code) }
+        checkConnectionConsistency()
+        assertEquals("isn't? Isn't", text)
+        assertEquals("", composingText)
+    }
+
     @Test fun deleteMultiCodepointText() {
         setText("hello there \uD83E\uDF00")
         functionalKeyPress(KeyCode.DELETE)

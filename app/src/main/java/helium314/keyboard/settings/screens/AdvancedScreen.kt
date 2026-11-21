@@ -43,6 +43,7 @@ import helium314.keyboard.latin.utils.Theme
 import helium314.keyboard.settings.dialogs.TextInputDialog
 import helium314.keyboard.settings.preferences.BackupRestorePreference
 import helium314.keyboard.settings.preferences.LoadGestureLibPreference
+import helium314.keyboard.settings.preferences.HardwareKeyAppDeliveryPreference
 import helium314.keyboard.settings.preferences.TextInputPreference
 import helium314.keyboard.latin.utils.previewDark
 import androidx.core.content.edit
@@ -89,6 +90,15 @@ fun AdvancedSettingsScreen(
         Settings.PREF_EMOJI_MAX_SDK,
         Settings.PREF_URL_DETECTION,
         Settings.PREF_ENABLE_HARDWARE_KEYBOARD,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD))
+            Settings.PREF_HARDWARE_KEY_DELIVERY else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD))
+            Settings.PREF_HARDWARE_KEY_IME_PACE else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD)
+            && prefs.getString(Settings.PREF_HARDWARE_KEY_IME_PACE, Defaults.PREF_HARDWARE_KEY_IME_PACE) == "MS")
+            Settings.PREF_HARDWARE_KEY_IME_PACE_MS else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD))
+            Settings.PREF_HARDWARE_KEY_APP_DELIVERY else null,
         if (BuildConfig.BUILD_TYPE != "nouserlib") SettingsWithoutKey.LOAD_GESTURE_LIB else null
     )
     SearchSettingsScreen(
@@ -281,6 +291,33 @@ fun createAdvancedSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_ENABLE_HARDWARE_KEYBOARD, R.string.prefs_enable_hardware_keyboard) {
         SwitchPreference(it, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD)
+    },
+    Setting(context, Settings.PREF_HARDWARE_KEY_DELIVERY, R.string.prefs_hardware_key_delivery) {
+        val items = listOf(
+            stringResource(R.string.prefs_hardware_key_delivery_pass_through) to "PASS_THROUGH",
+            stringResource(R.string.prefs_hardware_key_delivery_ime) to "IME",
+        )
+        ListPreference(it, items, Defaults.PREF_HARDWARE_KEY_DELIVERY)
+    },
+    Setting(context, Settings.PREF_HARDWARE_KEY_IME_PACE, R.string.prefs_hardware_key_ime_pace) {
+        val items = listOf(
+            stringResource(R.string.prefs_hardware_key_ime_pace_settle) to "SETTLE",
+            stringResource(R.string.prefs_hardware_key_ime_pace_ms_mode) to "MS",
+        )
+        ListPreference(it, items, Defaults.PREF_HARDWARE_KEY_IME_PACE)
+    },
+    Setting(context, Settings.PREF_HARDWARE_KEY_IME_PACE_MS, R.string.prefs_hardware_key_ime_pace_ms) { setting ->
+        SliderPreference(
+            name = setting.title,
+            key = setting.key,
+            default = Defaults.PREF_HARDWARE_KEY_IME_PACE_MS,
+            range = 0f..100f,
+            description = { stringResource(R.string.abbreviation_unit_milliseconds, it.toString()) }
+        )
+    },
+    Setting(context, Settings.PREF_HARDWARE_KEY_APP_DELIVERY,
+        R.string.prefs_hardware_key_app_delivery, R.string.prefs_hardware_key_app_delivery_summary) {
+        HardwareKeyAppDeliveryPreference(it)
     },
     Setting(context, SettingsWithoutKey.LOAD_GESTURE_LIB, R.string.load_gesture_library, R.string.load_gesture_library_summary) {
         LoadGestureLibPreference(it)

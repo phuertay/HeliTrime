@@ -1038,12 +1038,19 @@ public final class InputLogic {
         // make it shorter (possibly cut into several pieces). Also factor
         // handleNonSpecialCharacterEvent which has the same name as other handle* methods but is
         // not the same.
+        // Hardware letters commit plain text. setComposingText underlines the word; OneNote then
+        // races paced deletes against that span. Hangul combining still composes.
+        final boolean hardwarePlain = isHardwarePlainEvent(event);
+        if (hardwarePlain && mWordComposer.isComposingWord()) {
+            mConnection.finishComposingText();
+            resetComposingState(false /* alsoResetLastComposedWord */);
+        }
         boolean isComposingWord = mWordComposer.isComposingWord();
         mWordComposer.unsetBatchMode(); // relevant in case we continue a batch word with normal typing
 
         // if we continue directly after a sometimesWordConnector, restart suggestions for the whole word
         // (only with URL detection and suggestions enabled)
-        if (settingsValues.mUrlDetectionEnabled && settingsValues.needsToLookupSuggestions()
+        if (!hardwarePlain && settingsValues.mUrlDetectionEnabled && settingsValues.needsToLookupSuggestions()
                 && !isComposingWord && SpaceState.NONE == inputTransaction.getSpaceState()
                 && settingsValues.mSpacingAndPunctuations.isSometimesWordConnector(mConnection.getCodePointBeforeCursor())
                 // but not if there are two consecutive sometimesWordConnectors (e.g. "...bla")
@@ -1087,7 +1094,9 @@ public final class InputLogic {
         // we need to reset the composing state and switch isComposingWord. The order of the
         // tests is important for good performance.
         // We only start composing if we're not already composing.
-        if (!isComposingWord
+        // Hardware plain keys never start composing (see hardwarePlain above).
+        if (!hardwarePlain
+                && !isComposingWord
         // We only start composing if this is a word code point. Essentially that means it's a
         // a letter or a word connector.
                 && settingsValues.isWordCodePoint(codePoint)
@@ -1295,6 +1304,13 @@ public final class InputLogic {
                 : InputTransaction.SHIFT_UPDATE_NOW;
         inputTransaction.requireShiftUpdate(shiftUpdateKind);
 
+        // Hardware delete never edits via setComposingText. Drop the underline first, then
+        // delete as plain text — same path soft delete uses when nothing is composing.
+        if (isHardwarePlainEvent(event) && mWordComposer.isComposingWord()) {
+            mConnection.finishComposingText();
+            resetComposingState(true /* alsoResetLastComposedWord */);
+        }
+
         if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {
             // If we are in the middle of a recorrection, we need to commit the recorrection
             // first so that we can remove the character at the current cursor position.
@@ -1344,7 +1360,7 @@ public final class InputLogic {
             // Restart suggestions when backspacing into a reverted word. This is required for
             // the final corrected word to be learned, as learning only occurs when suggestions
             // are active.
-            restartSuggestionsAfterDelete(inputTransaction);
+            restartSuggestionsAfterDelete(event, inputTransaction);
             return;
         }
         if (SpaceState.DOUBLE == inputTransaction.getSpaceState()) {
@@ -1378,7 +1394,7 @@ public final class InputLogic {
             mConnection.setSelection(mConnection.getExpectedSelectionEnd(), mConnection.getExpectedSelectionEnd());
             mConnection.deleteTextBeforeCursor(numCharsDeleted);
             StatsUtils.onBackspaceSelectedText(numCharsDeleted);
-            restartSuggestionsAfterDelete(inputTransaction);
+            restartSuggestionsAfterDelete(event, inputTransaction);
             return;
         }
 
@@ -1449,16 +1465,29 @@ public final class InputLogic {
             // Consider unlearning the word being deleted (if we have not done so already).
             unlearnWordBeingDeleted(inputTransaction.getSettingsValues());
         }
-        restartSuggestionsAfterDelete(inputTransaction);
+        restartSuggestionsAfterDelete(event, inputTransaction);
     }
 
-    private void restartSuggestionsAfterDelete(InputTransaction inputTransaction) {
+    private void restartSuggestionsAfterDelete(Event event, InputTransaction inputTransaction) {
+        // Resuming suggestions setComposingRegion (underline). Hardware Through IME must not
+        // re-underline after a delete — that span is what raced paced DELs in OneNote.
+        if (isHardwarePlainEvent(event)) {
+            mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+            return;
+        }
         if (mConnection.hasSlowInputConnection()) {
             mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
         } else if (inputTransaction.getSettingsValues().needsToLookupSuggestions()
             && inputTransaction.getSettingsValues().mSpacingAndPunctuations.mCurrentLanguageHasSpacesOrWordIterator) {
             restartSuggestionsOnWordTouchedByCursor(inputTransaction.getSettingsValues());
         }
+    }
+
+    /** Hardware keypress that is not a Hangul/combiner combining event. */
+    private static boolean isHardwarePlainEvent(Event event) {
+        return event.getX() == Constants.EXTERNAL_KEYBOARD_COORDINATE
+                && event.getY() == Constants.EXTERNAL_KEYBOARD_COORDINATE
+                && !event.isCombining();
     }
 
     private String getWordAtCursor(SettingsValues settingsValues) {

@@ -8,7 +8,6 @@ import android.view.inputmethod.InputMethodSubtype
 import androidx.core.util.forEach
 import androidx.core.view.inputmethod.EditorInfoCompat
 import androidx.core.view.inputmethod.InputContentInfoCompat
-import helium314.keyboard.compat.AppWorkarounds
 import helium314.keyboard.compat.CompatBreakIterator
 import helium314.keyboard.event.Event
 import helium314.keyboard.event.HangulEventDecoder
@@ -19,6 +18,8 @@ import helium314.keyboard.keyboard.internal.LayoutDirective
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
 import helium314.keyboard.latin.AudioAndHapticFeedbackManager
 import helium314.keyboard.latin.EmojiAltPhysicalKeyDetector
+import helium314.keyboard.latin.HardwareKeyDeliveryMode
+import helium314.keyboard.latin.HardwareKeyPaceQueue
 import helium314.keyboard.latin.LatinIME
 import helium314.keyboard.latin.RichInputMethodManager
 import helium314.keyboard.latin.common.Constants
@@ -48,12 +49,37 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
     private val settings = Settings.getInstance()
     private val audioAndHapticFeedbackManager = AudioAndHapticFeedbackManager.getInstance()
 
+    private val hardwareKeyPace by lazy {
+        HardwareKeyPaceQueue(
+            handler = latinIME.mHandler,
+            dispatch = { event ->
+                latinIME.pinyinController?.onHardwareKeys()
+                // Do not releaseCompositionForHardware() here. That marks an external
+                // cursor and reloads the field; OneNote then races paced DELs and drops them.
+                // Through IME deletes shrink the composing word like soft backspace.
+                inputLogic.onCodeInput(
+                    settings.current, event,
+                    keyboardSwitcher.keyboardCapsMode,
+                    latinIME.mHandler
+                )
+            },
+        )
+    }
+
     // language slide state
     private var initialSubtype: InputMethodSubtype? = null
     private var subtypeSwitchCount = 0
 
+    /** Belated selection from the last paced IME hardware key. */
+    fun onHardwareImeSettled() {
+        hardwareKeyPace.onSelectionSettled()
+    }
+
+    fun isHardwareImePaceActive(): Boolean = hardwareKeyPace.isActive()
+
     override fun onPressKey(primaryCode: Int, repeatCount: Int, pointerCount: Int, hapticEvent: HapticEvent) {
         latinIME.noteSoftInput()
+        hardwareKeyPace.clear()
         metaOnPressKey(primaryCode)
         keyboardSwitcher.onPressKey(primaryCode, pointerCount, latinIME.currentAutoCapsState, latinIME.currentRecapitalizeState)
         // we need to use LatinIME for handling of key-down audio and haptics
@@ -81,21 +107,27 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     override fun onKeyDown(keyCode: Int, keyEvent: KeyEvent): Boolean {
         emojiAltPhysicalKeyDetector.onKeyDown(keyEvent)
-        // Firefox's page script fights a composing span: the word is inserted twice and
-        // backspace deletes the wrong characters. A steno machine already produced the text,
-        // so the editor has to receive the keys. HeliBoard does this when hardware keyboard
-        // support is off. Korean still composes through the IME.
-        val firefox = AppWorkarounds.isFirefoxOrFork(latinIME.currentInputEditorInfo?.packageName)
-        if (firefox && settings.current.mLocale.language != "ko") {
-            latinIME.pinyinController?.onHardwareKeys()
-            inputLogic.releaseCompositionForHardware()
-            return false
-        }
         if (!settings.current.mEnableHardwareKeyboard)
             return false
 
+        val pkg = latinIME.currentInputEditorInfo?.packageName
+        val sv = settings.current
+        val override = sv.hardwareKeyOverrideForPackage(pkg)
+        // Hangul needs the IME combiner; pass-through would break syllables.
+        val mode = if (sv.mLocale.language == "ko") HardwareKeyDeliveryMode.IME
+            else (override?.mode ?: sv.mHardwareKeyDeliveryMode)
+
+        // Pass-through and Ctrl/Alt/Meta chords: drop underline, return false so the
+        // editor handles the real KeyEvent (InputMethodService.onKeyDown contract).
+        if (mode == HardwareKeyDeliveryMode.PASS_THROUGH ||
+            keyEvent.metaState and SHORTCUT_META != 0
+        ) {
+            prepareHardwarePassThrough()
+            return false
+        }
+
         val event: Event
-        if (settings.current.mLocale.language == "ko") { // todo: this does not appear to be the right place
+        if (sv.mLocale.language == "ko") { // todo: this does not appear to be the right place
             val subtype = keyboardSwitcher.keyboard?.mId?.subtype ?: RichInputMethodManager.getInstance().currentSubtype
             event = HangulEventDecoder.decodeHardwareKeyEvent(subtype, keyEvent) {
                 getHardwareKeyEventDecoder(keyEvent.deviceId).decodeHardwareKey(keyEvent)
@@ -104,15 +136,13 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             event = getHardwareKeyEventDecoder(keyEvent.deviceId).decodeHardwareKey(keyEvent)
         }
 
-        if (event.isHandled) {
-            inputLogic.onCodeInput(
-                settings.current, event,
-                keyboardSwitcher.keyboardCapsMode, // TODO: this is not necessarily correct for a hardware keyboard right now
-                latinIME.mHandler
-            )
-            return true
-        }
-        return false
+        if (!event.isHandled) return false
+
+        val pace = override?.pace ?: sv.mHardwareKeyImePace
+        val paceMs = override?.paceMs ?: sv.mHardwareKeyImePaceMs
+        hardwareKeyPace.configure(pace, paceMs)
+        hardwareKeyPace.enqueue(event)
+        return true
     }
 
     override fun onCodeInput(primaryCode: Int, x: Int, y: Int, isKeyRepeat: Boolean) {
@@ -433,6 +463,12 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         return newDecoder
     }
 
+    private fun prepareHardwarePassThrough() {
+        latinIME.pinyinController?.onHardwareKeys()
+        hardwareKeyPace.clear()
+        inputLogic.releaseCompositionForHardware()
+    }
+
     // -------------------------- meta state handling -----------------------------
 
     // current state
@@ -531,6 +567,9 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
     }
 
     companion object {
+        private val SHORTCUT_META =
+            KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK or KeyEvent.META_META_MASK
+
         private enum class MetaPressState {
             UNSET, // default state, not active
             SET, // enabled without onPressKey (e.g. in popup)

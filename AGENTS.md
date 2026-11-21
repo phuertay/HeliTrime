@@ -8,6 +8,10 @@ The release workflow publishes that file on push to `main` and to `cursor/**`.
 
 Every change that ships a build bumps `versionCode` by 1 and `versionName` to the next `4.3-betaN` in `app/build.gradle.kts` before the push. About shows both. Android will not replace an install whose version code did not increase, so a rebuild of the same version is not an update.
 
+## How to work (always)
+
+Aim for deeper, general, elegant solutions — everywhere, not only this repo. Prefer one good rule that covers a class of problems over patches, carve-outs, and per-app or per-chord special cases. A symptom in OneNote or Firefox is evidence about the mechanism, not a license to hard-code that app or that shortcut.
+
 This file is the task. Do both jobs, in this order. Do not start Job 2 until Job 1's checks pass. Do not stop after Job 1.
 
 The product decision is already made. Do not reopen it.

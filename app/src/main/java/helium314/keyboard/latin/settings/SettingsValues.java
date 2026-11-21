@@ -118,6 +118,10 @@ public class SettingsValues {
     public final int mKeyLongpressTimeout;
     public final boolean mEnableEmojiAltPhysicalKey;
     public final boolean mEnableHardwareKeyboard;
+    public final helium314.keyboard.latin.HardwareKeyDeliveryMode mHardwareKeyDeliveryMode;
+    public final helium314.keyboard.latin.HardwareKeyImePace mHardwareKeyImePace;
+    public final int mHardwareKeyImePaceMs;
+    public final String mHardwareKeyAppDelivery;
     public final boolean mIsSplitKeyboardEnabled;
     public final float mSplitKeyboardSpacerRelativeWidth;
     public final boolean mQuickPinToolbarKeys;
@@ -262,6 +266,12 @@ public class SettingsValues {
         mKeypressSoundVolume = prefs.getFloat(Settings.PREF_KEYPRESS_SOUND_VOLUME, Defaults.PREF_KEYPRESS_SOUND_VOLUME);
         mEnableEmojiAltPhysicalKey = prefs.getBoolean(Settings.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY, Defaults.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY);
         mEnableHardwareKeyboard = prefs.getBoolean(Settings.PREF_ENABLE_HARDWARE_KEYBOARD, Defaults.PREF_ENABLE_HARDWARE_KEYBOARD);
+        mHardwareKeyDeliveryMode = helium314.keyboard.latin.HardwareKeyDeliveryMode.fromPref(
+                prefs.getString(Settings.PREF_HARDWARE_KEY_DELIVERY, Defaults.PREF_HARDWARE_KEY_DELIVERY));
+        mHardwareKeyImePace = helium314.keyboard.latin.HardwareKeyImePace.fromPref(
+                prefs.getString(Settings.PREF_HARDWARE_KEY_IME_PACE, Defaults.PREF_HARDWARE_KEY_IME_PACE));
+        mHardwareKeyImePaceMs = prefs.getInt(Settings.PREF_HARDWARE_KEY_IME_PACE_MS, Defaults.PREF_HARDWARE_KEY_IME_PACE_MS);
+        mHardwareKeyAppDelivery = prefs.getString(Settings.PREF_HARDWARE_KEY_APP_DELIVERY, Defaults.PREF_HARDWARE_KEY_APP_DELIVERY);
         mGestureInputEnabled = JniUtils.sHaveGestureLib && prefs.getBoolean(Settings.PREF_GESTURE_INPUT, Defaults.PREF_GESTURE_INPUT);
         mGestureTrailEnabled = prefs.getBoolean(Settings.PREF_GESTURE_PREVIEW_TRAIL, Defaults.PREF_GESTURE_PREVIEW_TRAIL);
         mGestureFloatingPreviewTextEnabled = !mInputAttributes.mDisableGestureFloatingPreviewText
@@ -393,6 +403,21 @@ public class SettingsValues {
 
     public boolean isSameInputType(final EditorInfo editorInfo) {
         return mInputAttributes.isSameInputType(editorInfo);
+    }
+
+    /** Default hardware delivery, overridden per package when listed. */
+    public helium314.keyboard.latin.HardwareKeyDeliveryMode hardwareKeyDeliveryForPackage(
+            final String packageName) {
+        return helium314.keyboard.latin.HardwareKeyDeliveryMode.forPackage(
+                mHardwareKeyDeliveryMode, mHardwareKeyAppDelivery, packageName);
+    }
+
+    /** Per-app override including IME pace, or null when the package uses the defaults. */
+    @androidx.annotation.Nullable
+    public helium314.keyboard.latin.HardwareKeyAppOverride hardwareKeyOverrideForPackage(
+            final String packageName) {
+        return helium314.keyboard.latin.HardwareKeyAppOverride.find(
+                mHardwareKeyAppDelivery, packageName);
     }
 
     public boolean hasSameOrientation(final Configuration configuration) {
