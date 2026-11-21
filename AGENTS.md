@@ -10,7 +10,7 @@ Every change that ships a build bumps `versionCode` by 1 and `versionName` to th
 
 ## How to work (always)
 
-Aim for deeper, general, elegant solutions. Prefer one good rule that covers a class of problems over patches, carve-outs, and per-app or per-chord special cases. A symptom in OneNote or Firefox is evidence about the mechanism, not a license to hard-code that app or that shortcut. This applies to every change in this fork, not only pinyin or hardware keys.
+Aim for deeper, general, elegant solutions — everywhere, not only this repo. Prefer one good rule that covers a class of problems over patches, carve-outs, and per-app or per-chord special cases. A symptom in OneNote or Firefox is evidence about the mechanism, not a license to hard-code that app or that shortcut.
 
 This file is the task. Do both jobs, in this order. Do not start Job 2 until Job 1's checks pass. Do not stop after Job 1.
 
