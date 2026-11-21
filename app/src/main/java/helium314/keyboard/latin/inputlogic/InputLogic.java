@@ -733,7 +733,9 @@ public final class InputLogic {
         }
         switch (keyCode) {
             case KeyCode.DELETE:
-                handleBackspaceEvent(event, inputTransaction, false);
+                // Soft Ctrl+Backspace (on-screen Ctrl held) should match hardware Ctrl+Backspace.
+                handleBackspaceEvent(event, inputTransaction,
+                        (event.getMetaState() & KeyEvent.META_CTRL_MASK) != 0);
                 // Backspace is a functional key, but it affects the contents of the editor.
                 inputTransaction.setDidAffectContents();
                 break;
