@@ -117,14 +117,13 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         val mode = if (sv.mLocale.language == "ko") HardwareKeyDeliveryMode.IME
             else (override?.mode ?: sv.mHardwareKeyDeliveryMode)
 
-        if (mode == HardwareKeyDeliveryMode.PASS_THROUGH) {
-            return deliverHardwareToEditor(keyEvent)
-        }
-
-        // Ctrl/Alt/Meta chords: same delivery as pass-through (editor sees the KeyEvent),
-        // except Ctrl+Backspace which many editors ignore while an IME is bound.
-        if (keyEvent.metaState and SHORTCUT_META != 0) {
-            return deliverHardwareToEditor(keyEvent)
+        // Pass-through and Ctrl/Alt/Meta chords: drop underline, return false so the
+        // editor handles the real KeyEvent (InputMethodService.onKeyDown contract).
+        if (mode == HardwareKeyDeliveryMode.PASS_THROUGH ||
+            keyEvent.metaState and SHORTCUT_META != 0
+        ) {
+            prepareHardwarePassThrough()
+            return false
         }
 
         val event: Event
@@ -464,35 +463,10 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         return newDecoder
     }
 
-    /**
-     * Pass-through and shortcut chords: drop any underline, then let the editor see the
-     * real [KeyEvent]. Ctrl+Backspace is the exception — several editors (notably OneNote)
-     * ignore that KeyEvent while an IME is bound, so delete the word through the
-     * InputConnection instead. No per-app checks.
-     * @return true if the IME consumed the event
-     */
-    private fun deliverHardwareToEditor(keyEvent: KeyEvent): Boolean {
+    private fun prepareHardwarePassThrough() {
         latinIME.pinyinController?.onHardwareKeys()
         hardwareKeyPace.clear()
         inputLogic.releaseCompositionForHardware()
-        if (keyEvent.keyCode == KeyEvent.KEYCODE_DEL &&
-            keyEvent.metaState and KeyEvent.META_CTRL_MASK != 0
-        ) {
-            val event = Event.createHardwareKeypressEvent(
-                Event.NOT_A_CODE_POINT,
-                KeyCode.DELETE_WORD,
-                keyEvent.metaState,
-                null,
-                keyEvent.repeatCount != 0,
-            )
-            inputLogic.onCodeInput(
-                settings.current, event,
-                keyboardSwitcher.keyboardCapsMode,
-                latinIME.mHandler,
-            )
-            return true
-        }
-        return false
     }
 
     // -------------------------- meta state handling -----------------------------

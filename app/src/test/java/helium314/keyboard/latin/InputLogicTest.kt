@@ -106,20 +106,6 @@ class InputLogicTest {
         assertEquals("hello ", text)
     }
 
-    @Test fun `hardware ctrl backspace removes word without underline`() {
-        // Same path deliverHardwareToEditor uses for Ctrl+Backspace (OneNote ignores the KeyEvent).
-        setText("hello there")
-        latinIME.onEvent(
-            Event.createHardwareKeypressEvent(
-                Event.NOT_A_CODE_POINT, KeyCode.DELETE_WORD, 0, null, false
-            )
-        )
-        handleMessages()
-        checkConnectionConsistency()
-        assertEquals("hello ", text)
-        assertEquals("", composingText)
-    }
-
     @Test fun `hardware letters do not underline`() {
         latinIME.onEvent(Event.createHardwareKeypressEvent('h'.code, 'h'.code, 0, null, false))
         handleMessages()
