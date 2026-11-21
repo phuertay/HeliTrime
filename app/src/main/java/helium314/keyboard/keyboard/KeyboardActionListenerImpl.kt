@@ -118,19 +118,13 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             else (override?.mode ?: sv.mHardwareKeyDeliveryMode)
 
         if (mode == HardwareKeyDeliveryMode.PASS_THROUGH) {
-            latinIME.pinyinController?.onHardwareKeys()
-            inputLogic.releaseCompositionForHardware()
-            hardwareKeyPace.clear()
-            return false
+            return deliverHardwareToEditor(keyEvent)
         }
 
-        // Ctrl/Alt/Meta chords: drop the underline and let the editor see the real KeyEvent.
-        // No per-chord mapping — same path for Ctrl+Backspace, Ctrl+Arrow, Ctrl+C, …
+        // Ctrl/Alt/Meta chords: same delivery as pass-through (editor sees the KeyEvent),
+        // except Ctrl+Backspace which many editors ignore while an IME is bound.
         if (keyEvent.metaState and SHORTCUT_META != 0) {
-            latinIME.pinyinController?.onHardwareKeys()
-            hardwareKeyPace.clear()
-            inputLogic.releaseCompositionForHardware()
-            return false
+            return deliverHardwareToEditor(keyEvent)
         }
 
         val event: Event
@@ -468,6 +462,37 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         val newDecoder = HardwareKeyboardEventDecoder(deviceId)
         hardwareEventDecoders.put(deviceId, newDecoder)
         return newDecoder
+    }
+
+    /**
+     * Pass-through and shortcut chords: drop any underline, then let the editor see the
+     * real [KeyEvent]. Ctrl+Backspace is the exception — several editors (notably OneNote)
+     * ignore that KeyEvent while an IME is bound, so delete the word through the
+     * InputConnection instead. No per-app checks.
+     * @return true if the IME consumed the event
+     */
+    private fun deliverHardwareToEditor(keyEvent: KeyEvent): Boolean {
+        latinIME.pinyinController?.onHardwareKeys()
+        hardwareKeyPace.clear()
+        inputLogic.releaseCompositionForHardware()
+        if (keyEvent.keyCode == KeyEvent.KEYCODE_DEL &&
+            keyEvent.metaState and KeyEvent.META_CTRL_MASK != 0
+        ) {
+            val event = Event.createHardwareKeypressEvent(
+                Event.NOT_A_CODE_POINT,
+                KeyCode.DELETE_WORD,
+                keyEvent.metaState,
+                null,
+                keyEvent.repeatCount != 0,
+            )
+            inputLogic.onCodeInput(
+                settings.current, event,
+                keyboardSwitcher.keyboardCapsMode,
+                latinIME.mHandler,
+            )
+            return true
+        }
+        return false
     }
 
     // -------------------------- meta state handling -----------------------------
