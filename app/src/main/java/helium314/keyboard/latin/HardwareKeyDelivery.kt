@@ -135,6 +135,20 @@ class HardwareKeyPaceQueue(
         waiting = false
     }
 
+    /**
+     * Deliver every still-queued key now, in order, then idle.
+     * Used before a hardware key escapes to the app (Home, shortcut chord, …)
+     * so later KeyEvents cannot overtake pending IME commits.
+     */
+    fun flush() {
+        handler.removeCallbacks(advanceRunnable)
+        waiting = false
+        while (true) {
+            val event = queue.pollFirst() ?: break
+            dispatch(event)
+        }
+    }
+
     fun isActive(): Boolean = waiting || queue.isNotEmpty()
 
     fun enqueue(event: Event) {

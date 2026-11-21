@@ -117,8 +117,8 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         val mode = if (sv.mLocale.language == "ko") HardwareKeyDeliveryMode.IME
             else (override?.mode ?: sv.mHardwareKeyDeliveryMode)
 
-        // Pass-through and Ctrl/Alt/Meta chords: drop underline, return false so the
-        // editor handles the real KeyEvent (InputMethodService.onKeyDown contract).
+        // Pass-through and Ctrl/Alt/Meta chords: flush paced IME keys first, drop
+        // underline, return false so the editor handles the real KeyEvent.
         if (mode == HardwareKeyDeliveryMode.PASS_THROUGH ||
             keyEvent.metaState and SHORTCUT_META != 0
         ) {
@@ -136,7 +136,12 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             event = getHardwareKeyEventDecoder(keyEvent.deviceId).decodeHardwareKey(keyEvent)
         }
 
-        if (!event.isHandled) return false
+        // Home/End/Page/… are not decoded into the IME queue. Flush pending paced
+        // commits before the real KeyEvent reaches the app so order stays physical.
+        if (!event.isHandled) {
+            prepareHardwarePassThrough()
+            return false
+        }
 
         val pace = override?.pace ?: sv.mHardwareKeyImePace
         val paceMs = override?.paceMs ?: sv.mHardwareKeyImePaceMs
@@ -465,7 +470,8 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     private fun prepareHardwarePassThrough() {
         latinIME.pinyinController?.onHardwareKeys()
-        hardwareKeyPace.clear()
+        // Never drop paced keys so a later KeyEvent can overtake them.
+        hardwareKeyPace.flush()
         inputLogic.releaseCompositionForHardware()
     }
 
