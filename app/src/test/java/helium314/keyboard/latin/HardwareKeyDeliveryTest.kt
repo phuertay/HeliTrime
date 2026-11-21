@@ -179,4 +179,40 @@ class HardwareKeyDeliveryTest {
         assertEquals(listOf("a", "DEL", "DEL", "DEL"), dispatched)
     }
 
+    @Test
+    fun flushDeliversPendingInOrderThenIdles() {
+        val dispatched = mutableListOf<Int>()
+        val q = HardwareKeyPaceQueue(Handler(Looper.getMainLooper())) { e ->
+            dispatched += e.codePoint
+        }
+        q.configure(HardwareKeyImePace.MS, 50)
+        q.enqueue(letter('a'.code))
+        q.enqueue(letter('b'.code))
+        q.enqueue(letter('c'.code))
+        assertEquals(listOf('a'.code), dispatched)
+        assertTrue(q.isActive())
+        q.flush()
+        assertEquals(listOf('a'.code, 'b'.code, 'c'.code), dispatched)
+        assertFalse(q.isActive())
+        // A delayed advance from before flush must not fire again.
+        ShadowLooper.idleMainLooper(50, TimeUnit.MILLISECONDS)
+        assertEquals(listOf('a'.code, 'b'.code, 'c'.code), dispatched)
+    }
+
+    @Test
+    fun flushOnSettleLeavesNothingQueued() {
+        val dispatched = mutableListOf<Int>()
+        val q = HardwareKeyPaceQueue(Handler(Looper.getMainLooper())) { e ->
+            dispatched += e.codePoint
+        }
+        q.configure(HardwareKeyImePace.SETTLE, 15)
+        q.enqueue(letter('x'.code))
+        q.enqueue(letter('y'.code))
+        q.flush()
+        assertEquals(listOf('x'.code, 'y'.code), dispatched)
+        assertFalse(q.isActive())
+        q.onSelectionSettled()
+        assertEquals(listOf('x'.code, 'y'.code), dispatched)
+    }
+
 }
