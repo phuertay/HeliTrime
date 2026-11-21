@@ -100,6 +100,32 @@ class InputLogicTest {
         assertEquals("there", composingText)
     }
 
+    @Test fun `delete word key removes word`() {
+        setText("hello there")
+        functionalKeyPress(KeyCode.DELETE_WORD)
+        assertEquals("hello ", text)
+    }
+
+    @Test fun `hardware letters do not underline`() {
+        latinIME.onEvent(Event.createHardwareKeypressEvent('h'.code, 'h'.code, 0, null, false))
+        handleMessages()
+        latinIME.onEvent(Event.createHardwareKeypressEvent('i'.code, 'i'.code, 0, null, false))
+        handleMessages()
+        checkConnectionConsistency()
+        assertEquals("hi", text)
+        assertEquals("", composingText)
+
+        latinIME.onEvent(
+            Event.createHardwareKeypressEvent(
+                Event.NOT_A_CODE_POINT, KeyCode.DELETE, 0, null, false
+            )
+        )
+        handleMessages()
+        checkConnectionConsistency()
+        assertEquals("h", text)
+        assertEquals("", composingText)
+    }
+
     @Test fun deleteMultiCodepointText() {
         setText("hello there \uD83E\uDF00")
         functionalKeyPress(KeyCode.DELETE)

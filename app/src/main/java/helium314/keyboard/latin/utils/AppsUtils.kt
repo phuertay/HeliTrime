@@ -43,4 +43,18 @@ object AppsUtils {
         currentNames = newNames
         ExpandableDictionaryUtils.setNeedsUpdate(AppsBinaryDictionary.NAME)
     }
+
+    /** Substring match on app label and package; space-separated tokens must all match. */
+    fun fuzzyFilterApps(
+        packages: List<Triple<String, String, Drawable?>>,
+        query: String,
+    ): List<Triple<String, String, Drawable?>> {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) return packages
+        val tokens = q.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        return packages.filter { (pkg, name, _) ->
+            val hay = "${name.lowercase()} ${pkg.lowercase()}"
+            tokens.all { token -> hay.contains(token) }
+        }
+    }
 }
