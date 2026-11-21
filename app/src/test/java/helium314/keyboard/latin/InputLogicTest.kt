@@ -4,7 +4,6 @@ package helium314.keyboard.latin
 import android.os.Handler
 import android.os.Message
 import android.text.InputType
-import android.view.KeyEvent
 import android.view.inputmethod.*
 import androidx.core.content.edit
 import helium314.keyboard.ShadowInputMethodManager2
@@ -101,20 +100,30 @@ class InputLogicTest {
         assertEquals("there", composingText)
     }
 
-    @Test fun `ctrl delete removes word`() {
+    @Test fun `delete word key removes word`() {
         setText("hello there")
+        functionalKeyPress(KeyCode.DELETE_WORD)
+        assertEquals("hello ", text)
+    }
+
+    @Test fun `hardware letters do not underline`() {
+        latinIME.onEvent(Event.createHardwareKeypressEvent('h'.code, 'h'.code, 0, null, false))
+        handleMessages()
+        latinIME.onEvent(Event.createHardwareKeypressEvent('i'.code, 'i'.code, 0, null, false))
+        handleMessages()
+        checkConnectionConsistency()
+        assertEquals("hi", text)
+        assertEquals("", composingText)
+
         latinIME.onEvent(
             Event.createHardwareKeypressEvent(
-                Event.NOT_A_CODE_POINT, KeyCode.DELETE, KeyEvent.META_CTRL_ON, null, false
+                Event.NOT_A_CODE_POINT, KeyCode.DELETE, 0, null, false
             )
         )
         handleMessages()
         checkConnectionConsistency()
-        assertEquals("hello ", text)
-
-        setText("hello there")
-        functionalKeyPress(KeyCode.DELETE_WORD)
-        assertEquals("hello ", text)
+        assertEquals("h", text)
+        assertEquals("", composingText)
     }
 
     @Test fun deleteMultiCodepointText() {

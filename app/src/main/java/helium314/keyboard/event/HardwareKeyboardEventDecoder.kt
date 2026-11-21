@@ -35,10 +35,7 @@ class HardwareKeyboardEventDecoder(val mDeviceId: Int) : HardwareEventDecoder {
         val isKeyRepeat = 0 != keyEvent.repeatCount
 
         return if (KeyEvent.KEYCODE_DEL == keyCode) {
-            // Pass-through lets the editor handle Ctrl+Backspace as word delete.
-            // Through IME must map that chord explicitly; bare DELETE always deletes one char.
-            val deleteCode = if (keyEvent.isCtrlPressed) KeyCode.DELETE_WORD else KeyCode.DELETE
-            Event.createHardwareKeypressEvent(Event.NOT_A_CODE_POINT, deleteCode, metaState, null, isKeyRepeat)
+            Event.createHardwareKeypressEvent(Event.NOT_A_CODE_POINT, KeyCode.DELETE, metaState, null, isKeyRepeat)
         } else if (
             (keyEvent.isPrintingKey && codePointAndFlags != Event.NOT_A_CODE_POINT) // can be NOT_A_CODE_POINT depending on meta state (e.g. ctrl+c)
                 || KeyEvent.KEYCODE_SPACE == keyCode

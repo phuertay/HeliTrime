@@ -20,14 +20,16 @@ class HardwareKeyboardEventDecoderTest {
     }
 
     @Test
-    fun ctrlBackspaceIsDeleteWord() {
+    fun ctrlBackspaceKeepsDeleteAndMeta() {
+        // Delivery layer passes Ctrl/Alt/Meta chords to the editor; the decoder still
+        // reports DELETE with meta so callers can see the chord without remapping.
         val downTime = 0L
         val keyEvent = KeyEvent(
             downTime, downTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL,
             0, KeyEvent.META_CTRL_ON
         )
         val event = decoder.decodeHardwareKey(keyEvent)
-        assertEquals(KeyCode.DELETE_WORD, event.keyCode)
+        assertEquals(KeyCode.DELETE, event.keyCode)
         assertEquals(KeyEvent.META_CTRL_ON, event.metaState and KeyEvent.META_CTRL_ON)
     }
 }

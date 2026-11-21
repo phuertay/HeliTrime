@@ -124,6 +124,15 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             return false
         }
 
+        // Ctrl/Alt/Meta chords: drop the underline and let the editor see the real KeyEvent.
+        // No per-chord mapping — same path for Ctrl+Backspace, Ctrl+Arrow, Ctrl+C, …
+        if (keyEvent.metaState and SHORTCUT_META != 0) {
+            latinIME.pinyinController?.onHardwareKeys()
+            hardwareKeyPace.clear()
+            inputLogic.releaseCompositionForHardware()
+            return false
+        }
+
         val event: Event
         if (sv.mLocale.language == "ko") { // todo: this does not appear to be the right place
             val subtype = keyboardSwitcher.keyboard?.mId?.subtype ?: RichInputMethodManager.getInstance().currentSubtype
@@ -135,17 +144,6 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
         }
 
         if (!event.isHandled) return false
-
-        // Ctrl/Alt shortcuts skip the pace queue.
-        if (event.metaState and SHORTCUT_META != 0) {
-            hardwareKeyPace.clear()
-            inputLogic.onCodeInput(
-                sv, event,
-                keyboardSwitcher.keyboardCapsMode,
-                latinIME.mHandler
-            )
-            return true
-        }
 
         val pace = override?.pace ?: sv.mHardwareKeyImePace
         val paceMs = override?.paceMs ?: sv.mHardwareKeyImePaceMs
